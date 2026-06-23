@@ -44,6 +44,13 @@ export interface List {
   folder?: { id: string; name: string; hidden: boolean; access: boolean };
 }
 
+export interface StatusInfo {
+  status: string;
+  type: string;
+  orderindex: number;
+  color?: string;
+}
+
 // ── Client ─────────────────────────────────────────────────────────
 
 export class ClickUpClient {
@@ -84,6 +91,17 @@ export class ClickUpClient {
   async getFolderLists(folderId: string): Promise<List[]> {
     const res = await this.client.get(`/folder/${folderId}/list`);
     return res.data.lists as List[];
+  }
+
+  async getListStatuses(listId: string): Promise<{
+    name: string;
+    statuses: StatusInfo[];
+  }> {
+    const res = await this.client.get(`/list/${listId}`);
+    return {
+      name: res.data.name as string,
+      statuses: res.data.statuses as StatusInfo[],
+    };
   }
 
   // ── Actions ────────────────────────────────────────────────────

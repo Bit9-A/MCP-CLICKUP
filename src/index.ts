@@ -166,6 +166,25 @@ Las listas son donde se crean las tareas. Si no pasás folderId, busca listas si
       },
     },
   },
+  {
+    name: "get_list_statuses",
+    description: `Obtiene los estados disponibles de una lista de ClickUp.
+
+ÚSALA para:
+- Ver qué estados (pendiente, en curso, completado, etc.) tiene una lista
+- Conocer los posibles estados antes de actualizar una tarea
+- Explorar el flujo de trabajo de una lista`,
+    inputSchema: {
+      type: "object",
+      properties: {
+        listId: {
+          type: "string",
+          description: "ID de la lista de ClickUp",
+        },
+      },
+      required: ["listId"],
+    },
+  },
 ];
 
 // ── Handlers ────────────────────────────────────────────────────────
@@ -264,6 +283,37 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                 ...lines,
                 "",
                 `Total: ${lists.length}`,
+              ].join("\n"),
+            },
+          ],
+        };
+      }
+
+      case "get_list_statuses": {
+        const { listId } = args as Record<string, unknown>;
+        if (typeof listId !== "string") {
+          throw new McpError(
+            ErrorCode.InvalidParams,
+            "listId es requerido",
+          );
+        }
+        const listInfo = await clickup.getListStatuses(listId);
+
+        const statusLines = listInfo.statuses.map((s) => {
+          const typeIcon =
+            s.type === "closed" ? "✅" : s.type === "open" ? "⬜" : "🔄";
+          return `  ${typeIcon} **${s.status}** — orden: ${s.orderindex}`;
+        });
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: [
+                `## Estados de: ${listInfo.name}`,
+                ...statusLines,
+                "",
+                `Total: ${listInfo.statuses.length} estados`,
               ].join("\n"),
             },
           ],
