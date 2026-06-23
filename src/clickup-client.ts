@@ -177,4 +177,67 @@ export class ClickUpClient {
     const res = await this.client.get(`/task/${taskId}`);
     return res.data;
   }
+
+  async updateTask(taskId: string, params: Partial<CreateTaskParams>) {
+    const body: Record<string, unknown> = {};
+
+    if (params.name) body.name = params.name;
+    if (params.description !== undefined) body.description = params.description;
+    if (params.status) body.status = params.status;
+    if (params.priority !== undefined) body.priority = params.priority;
+
+    const parseDate = (val?: string): number | undefined => {
+      if (!val) return undefined;
+      return /^\d+$/.test(val) ? parseInt(val, 10) : new Date(val).getTime();
+    };
+
+    const dueTs = parseDate(params.dueDate);
+    if (dueTs !== undefined) body.due_date = dueTs;
+
+    const startTs = parseDate(params.startDate);
+    if (startTs !== undefined) body.start_date = startTs;
+
+    if (params.tags) body.tags = params.tags;
+
+    if (params.assignees && params.assignees.length > 0) {
+      body.assignees = { add: params.assignees };
+    }
+
+    if (params.customFields) {
+      body.custom_fields = params.customFields;
+    }
+
+    const res = await this.client.put(`/task/${taskId}`, body);
+    return res.data;
+  }
+
+  async deleteTask(taskId: string) {
+    await this.client.delete(`/task/${taskId}`);
+  }
+
+  async getTasks(
+    listId: string,
+    filters?: { statuses?: string[]; page?: number; orderBy?: string; reverse?: boolean; includeClosed?: boolean },
+  ) {
+    const params: Record<string, string | number | boolean> = { page: filters?.page ?? 0 };
+    if (filters?.orderBy) params.order_by = filters.orderBy;
+    if (filters?.reverse) params.reverse = true;
+    if (filters?.includeClosed) params.include_closed = true;
+    if (filters?.statuses?.length) params.statuses = filters.statuses.join(",");
+
+    const res = await this.client.get(`/list/${listId}/task`, { params });
+    return res.data as { tasks: unknown[] };
+  }
+
+  async getComments(taskId: string) {
+    const res = await this.client.get(`/task/${taskId}/comment`);
+    return res.data as { comments: unknown[] };
+  }
+
+  async addComment(taskId: string, commentText: string) {
+    const res = await this.client.post(`/task/${taskId}/comment`, {
+      comment_text: commentText,
+    });
+    return res.data;
+  }
 }

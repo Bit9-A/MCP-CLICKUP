@@ -259,6 +259,158 @@ Las listas son donde se crean las tareas. Si no pasás folderId, busca listas si
       required: ["taskId"],
     },
   },
+  {
+    name: "get_tasks",
+    description: `Lista las tareas de una lista de ClickUp con filtros opcionales.
+
+ÚSALA para:
+- Ver todas las tareas de una lista
+- Filtrar por estado, orden, etc.`,
+    inputSchema: {
+      type: "object",
+      properties: {
+        listId: {
+          type: "string",
+          description: "ID de la lista",
+        },
+        statuses: {
+          type: "string",
+          description: "Filtrar por estados separados por coma (ej: 'pendiente,en curso')",
+        },
+        page: {
+          type: "number",
+          description: "Número de página (default: 0)",
+        },
+        orderBy: {
+          type: "string",
+          description: "Orden: 'created', 'updated', 'due_date'",
+        },
+      },
+      required: ["listId"],
+    },
+  },
+  {
+    name: "update_task",
+    description: `Actualiza los campos de una tarea existente en ClickUp.
+
+ÚSALA cuando el usuario pida:
+- "Cambiar estado", "mover tarea", "actualizar tarea"
+- "Asignar tarea a...", "cambiar prioridad", "modificar fecha"
+- "Agregar módulo", "cambiar módulo"`,
+    inputSchema: {
+      type: "object",
+      properties: {
+        taskId: {
+          type: "string",
+          description: "ID de la tarea a actualizar",
+        },
+        name: {
+          type: "string",
+          description: "Nuevo nombre de la tarea",
+        },
+        description: {
+          type: "string",
+          description: "Nueva descripción",
+        },
+        status: {
+          type: "string",
+          description: "Nuevo estado (ej: 'en curso', 'completado')",
+        },
+        priority: {
+          type: "number",
+          description: "Nueva prioridad: 1 (Urgente) a 4 (Baja)",
+          enum: [1, 2, 3, 4],
+        },
+        dueDate: {
+          type: "string",
+          description: "Nueva fecha límite (ISO o timestamp ms)",
+        },
+        startDate: {
+          type: "string",
+          description: "Nueva fecha de inicio",
+        },
+        tags: {
+          type: "array",
+          items: { type: "string" },
+          description: "Reemplaza todas las etiquetas",
+        },
+        assignees: {
+          type: "array",
+          items: { type: "number" },
+          description: "Agrega estos usuarios a la tarea",
+        },
+        customFields: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              id: { type: "string" },
+              value: { description: "Valor del campo" },
+            },
+            required: ["id", "value"],
+          },
+          description: "Actualiza campos personalizados",
+        },
+      },
+      required: ["taskId"],
+    },
+  },
+  {
+    name: "delete_task",
+    description: `Elimina una tarea de ClickUp.
+
+ÚSALA cuando el usuario pida:
+- "Borrar tarea", "eliminar tarea", "remover tarea"`,
+    inputSchema: {
+      type: "object",
+      properties: {
+        taskId: {
+          type: "string",
+          description: "ID de la tarea a eliminar",
+        },
+      },
+      required: ["taskId"],
+    },
+  },
+  {
+    name: "get_task_comments",
+    description: `Obtiene los comentarios de una tarea de ClickUp.
+
+ÚSALA para:
+- Ver comentarios de una tarea
+- Leer la discusión de una tarea`,
+    inputSchema: {
+      type: "object",
+      properties: {
+        taskId: {
+          type: "string",
+          description: "ID de la tarea",
+        },
+      },
+      required: ["taskId"],
+    },
+  },
+  {
+    name: "add_comment",
+    description: `Agrega un comentario a una tarea de ClickUp.
+
+ÚSALA cuando el usuario pida:
+- "Comentar en tarea", "agregar comentario", "dejar nota"`,
+    inputSchema: {
+      type: "object",
+      properties: {
+        taskId: {
+          type: "string",
+          description: "ID de la tarea",
+        },
+        comment: {
+          type: "string",
+          description: "Texto del comentario",
+        },
+      },
+      required: ["taskId", "comment"],
+    },
+  },
 ];
 
 // ── Handlers ────────────────────────────────────────────────────────
@@ -501,6 +653,120 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
               ].join("\n"),
             },
           ],
+        };
+      }
+
+      case "get_tasks": {
+        const { listId: tListId, statuses, page, orderBy } = args as Record<string, unknown>;
+        if (typeof tListId !== "string") {
+          throw new McpError(ErrorCode.InvalidParams, "listId es requerido");
+        }
+        const data = await clickup.getTasks(tListId, {
+          statuses: (statuses as string)?.split(",").map((s: string) => s.trim()).filter(Boolean),
+          page: (page as number) ?? 0,
+          orderBy: (orderBy as string) ?? undefined,
+        });
+        const tasks = data.tasks as Array<Record<string, unknown>>;
+        const lines = tasks.map((t: Record<string, unknown>) => {
+          const st = (t.status as Record<string, unknown>)?.status as string ?? "—";
+          return `  • **${t.name as string}** — \`${t.id as string}\` [${st}]`;
+        });
+        return {
+          content: [{
+            type: "text",
+            text: [
+              `## Tareas (página ${(page as number) ?? 0})`,
+              ...lines,
+              "",
+              `Total: ${tasks.length}`,
+            ].join("\n"),
+          }],
+        };
+      }
+
+      case "update_task": {
+        const {
+          taskId: utTaskId,
+          name: utName,
+          description: utDesc,
+          status: utStatus,
+          priority: utPriority,
+          dueDate: utDueDate,
+          startDate: utStartDate,
+          tags: utTags,
+          assignees: utAssignees,
+          customFields: utCustomFields,
+        } = args as Record<string, unknown>;
+
+        if (typeof utTaskId !== "string") {
+          throw new McpError(ErrorCode.InvalidParams, "taskId es requerido");
+        }
+
+        const updated = await clickup.updateTask(utTaskId, {
+          name: utName as string,
+          description: utDesc as string,
+          status: utStatus as string,
+          priority: utPriority as 1 | 2 | 3 | 4,
+          dueDate: utDueDate as string,
+          startDate: utStartDate as string,
+          tags: utTags as string[],
+          assignees: utAssignees as number[],
+          customFields: utCustomFields as Array<{ id: string; value: unknown }>,
+        });
+
+        return {
+          content: [{
+            type: "text",
+            text: [
+              `✅ Tarea actualizada: **${updated.name as string}**`,
+              `🔗 ${(updated.url as string) ?? "Sin enlace"}`,
+            ].join("\n"),
+          }],
+        };
+      }
+
+      case "delete_task": {
+        const { taskId: delTaskId } = args as Record<string, unknown>;
+        if (typeof delTaskId !== "string") {
+          throw new McpError(ErrorCode.InvalidParams, "taskId es requerido");
+        }
+        await clickup.deleteTask(delTaskId);
+        return {
+          content: [{ type: "text", text: `🗑️ Tarea \`${delTaskId}\` eliminada` }],
+        };
+      }
+
+      case "get_task_comments": {
+        const { taskId: commTaskId } = args as Record<string, unknown>;
+        if (typeof commTaskId !== "string") {
+          throw new McpError(ErrorCode.InvalidParams, "taskId es requerido");
+        }
+        const { comments } = await clickup.getComments(commTaskId);
+        const comms = comments as Array<Record<string, unknown>>;
+        if (comms.length === 0) {
+          return { content: [{ type: "text", text: "Sin comentarios." }] };
+        }
+        const lines = comms.map((c) => {
+          const user = (c.user as Record<string, unknown>)?.username as string ?? "—";
+          const date = c.date ? new Date(Number(c.date)).toLocaleString() : "—";
+          return `  👤 **${user}** (${date})\n  ${(c.comment_text as string) ?? "—"}`;
+        });
+        return {
+          content: [{
+            type: "text",
+            text: ["## Comentarios", ...lines, "", `Total: ${comms.length}`].join("\n"),
+          }],
+        };
+      }
+
+      case "add_comment": {
+        const { taskId: acTaskId, comment } = args as Record<string, unknown>;
+        if (typeof acTaskId !== "string" || typeof comment !== "string") {
+          throw new McpError(ErrorCode.InvalidParams, "taskId y comment son requeridos");
+        }
+        await clickup.addComment(acTaskId, comment);
+        return {
+          content: [{ type: "text", text: `✅ Comentario agregado a tarea \`${acTaskId}\`` }],
         };
       }
 
