@@ -1,8 +1,10 @@
+node_modules/
+dist/
+.env
+
 # Environment-specific
 .atl/
-
-# IDE
-.vscode/
 .idea/
+.vscode/
 *.swp
 *.swo
