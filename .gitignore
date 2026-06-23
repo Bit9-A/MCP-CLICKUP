@@ -1,0 +1,8 @@
+# Environment-specific
+.atl/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo

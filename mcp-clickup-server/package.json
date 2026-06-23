@@ -1,0 +1,24 @@
+{
+  "name": "mcp-clickup-server",
+  "version": "1.0.0",
+  "description": "MCP server para integrar ClickUp con OpenCode/Gentle AI",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "setup": "node scripts/setup.mjs",
+    "dev": "node --env-file .env --import tsx src/index.ts",
+    "build": "tsc",
+    "start": "node --env-file .env dist/index.js",
+    "prestart": "node -e \"require('fs').existsSync('.env') || (console.error('❌ Creá el .env primero: npm run setup'), process.exit(1))\""
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "axios": "^1.18.1",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^26.0.0",
+    "tsx": "^4.22.4",
+    "typescript": "^6.0.3"
+  }
+}
