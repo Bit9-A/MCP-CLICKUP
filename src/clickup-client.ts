@@ -12,9 +12,13 @@ export interface CustomFieldValue {
 export interface CreateTaskParams {
   name: string;
   description?: string;
+  status?: string;
   priority?: 1 | 2 | 3 | 4;
   dueDate?: string;
+  startDate?: string;
+  tags?: string[];
   assignees?: number[];
+  parent?: string; // task ID for creating subtasks
   customFields?: CustomFieldValue[];
 }
 
@@ -118,19 +122,36 @@ export class ClickUpClient {
       description: params.description ?? "",
     };
 
+    if (params.status) {
+      body.status = params.status;
+    }
+
     if (params.priority !== undefined) {
       body.priority = params.priority;
     }
 
-    if (params.dueDate) {
-      const due = /^\d+$/.test(params.dueDate)
-        ? parseInt(params.dueDate, 10)
-        : new Date(params.dueDate).getTime();
-      body.due_date = due;
+    // Helper: parse fecha a timestamp ms
+    const parseDate = (val?: string): number | undefined => {
+      if (!val) return undefined;
+      return /^\d+$/.test(val) ? parseInt(val, 10) : new Date(val).getTime();
+    };
+
+    const dueTs = parseDate(params.dueDate);
+    if (dueTs !== undefined) body.due_date = dueTs;
+
+    const startTs = parseDate(params.startDate);
+    if (startTs !== undefined) body.start_date = startTs;
+
+    if (params.tags && params.tags.length > 0) {
+      body.tags = params.tags;
     }
 
     if (params.assignees && params.assignees.length > 0) {
       body.assignees = { add: params.assignees };
+    }
+
+    if (params.parent) {
+      body.parent = params.parent;
     }
 
     if (params.customFields && params.customFields.length > 0) {

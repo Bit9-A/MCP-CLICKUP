@@ -59,10 +59,11 @@ function formatList(items: { id: string; name: string }[], label: string) {
 const TOOLS = [
   {
     name: "create_task",
-    description: `Crea una tarea en una lista de ClickUp.
+    description: `Crea una tarea completa en una lista de ClickUp, con soporte para subtareas, campos personalizados, estados y más.
 
 ÚSALA cuando el usuario pida:
 - "Crear tarea", "agregar tarea", "subir tarea", "nueva tarea"
+- "Agregar subtarea", "crear subtarea"
 - Crear items en un tablero ClickUp
 - Cualquier solicitud de seguimiento de trabajo/tareas
 
@@ -82,6 +83,11 @@ NO uses otras herramientas para crear tareas — esta es la herramienta específ
           type: "string",
           description: "Descripción detallada de la tarea (soporta Markdown)",
         },
+        status: {
+          type: "string",
+          description:
+            "Estado inicial de la tarea (ej: 'pendiente', 'en curso'). Usá get_list_statuses para ver los disponibles",
+        },
         priority: {
           type: "number",
           description:
@@ -93,10 +99,25 @@ NO uses otras herramientas para crear tareas — esta es la herramienta específ
           description:
             "Fecha límite. Puede ser string ISO (ej: '2025-12-31' o '2025-12-31T18:00:00Z') o timestamp en milisegundos",
         },
+        startDate: {
+          type: "string",
+          description:
+            "Fecha de inicio. Mismo formato que dueDate",
+        },
+        tags: {
+          type: "array",
+          items: { type: "string" },
+          description: "Etiquetas/tags para la tarea",
+        },
         assignees: {
           type: "array",
           items: { type: "number" },
           description: "IDs de usuarios a asignar a la tarea",
+        },
+        parent: {
+          type: "string",
+          description:
+            "ID de la tarea padre para crear una subtarea. Ej: '86cacpvg1'",
         },
         customFields: {
           type: "array",
@@ -104,11 +125,15 @@ NO uses otras herramientas para crear tareas — esta es la herramienta específ
             type: "object",
             properties: {
               id: { type: "string", description: "ID del campo personalizado" },
-              value: { description: "Valor del campo (string, number, array según el tipo)" },
+              value: {
+                description:
+                  "Valor del campo. Para dropdown: el ID de la opción (UUID). Para number: número. Para text: string.",
+              },
             },
             required: ["id", "value"],
           },
-          description: "Valores de campos personalizados. Ej: [{id:'field_id', value:'Opción'}]",
+          description:
+            "Valores de campos personalizados. Ej: [{id:'field_id', value:'option_uuid'}]",
         },
       },
       required: ["listId", "name"],
@@ -435,9 +460,13 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           listId,
           name: taskName,
           description,
+          status,
           priority,
           dueDate,
+          startDate,
+          tags,
           assignees,
+          parent,
           customFields,
         } = args as Record<string, unknown>;
 
@@ -451,9 +480,13 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const task = await clickup.createTask(listId, {
           name: taskName,
           description: (description as string) ?? undefined,
+          status: (status as string) ?? undefined,
           priority: (priority as 1 | 2 | 3 | 4) ?? undefined,
           dueDate: (dueDate as string) ?? undefined,
+          startDate: (startDate as string) ?? undefined,
+          tags: (tags as string[]) ?? undefined,
           assignees: (assignees as number[]) ?? undefined,
+          parent: (parent as string) ?? undefined,
           customFields: (customFields as Array<{ id: string; value: unknown }>) ?? undefined,
         });
 
