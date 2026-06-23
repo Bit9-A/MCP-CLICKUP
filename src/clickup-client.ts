@@ -4,12 +4,18 @@ const CLICKUP_BASE_URL = "https://api.clickup.com/api/v2";
 
 // ── Types ──────────────────────────────────────────────────────────
 
+export interface CustomFieldValue {
+  id: string;
+  value: unknown;
+}
+
 export interface CreateTaskParams {
   name: string;
   description?: string;
   priority?: 1 | 2 | 3 | 4;
   dueDate?: string;
   assignees?: number[];
+  customFields?: CustomFieldValue[];
 }
 
 export interface Workspace {
@@ -127,7 +133,27 @@ export class ClickUpClient {
       body.assignees = { add: params.assignees };
     }
 
+    if (params.customFields && params.customFields.length > 0) {
+      body.custom_fields = params.customFields;
+    }
+
     const response = await this.client.post(`/list/${listId}/task`, body);
     return response.data;
+  }
+
+  async getListFields(listId: string): Promise<{
+    name: string;
+    fields: unknown[];
+  }> {
+    const res = await this.client.get(`/list/${listId}/field`);
+    return {
+      name: "", // name comes from getListStatuses
+      fields: res.data.fields as unknown[],
+    };
+  }
+
+  async getTask(taskId: string) {
+    const res = await this.client.get(`/task/${taskId}`);
+    return res.data;
   }
 }

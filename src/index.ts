@@ -98,6 +98,18 @@ NO uses otras herramientas para crear tareas — esta es la herramienta específ
           items: { type: "number" },
           description: "IDs de usuarios a asignar a la tarea",
         },
+        customFields: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              id: { type: "string", description: "ID del campo personalizado" },
+              value: { description: "Valor del campo (string, number, array según el tipo)" },
+            },
+            required: ["id", "value"],
+          },
+          description: "Valores de campos personalizados. Ej: [{id:'field_id', value:'Opción'}]",
+        },
       },
       required: ["listId", "name"],
     },
@@ -183,6 +195,43 @@ Las listas son donde se crean las tareas. Si no pasás folderId, busca listas si
         },
       },
       required: ["listId"],
+    },
+  },
+  {
+    name: "get_custom_fields",
+    description: `Obtiene los campos personalizados de una lista de ClickUp (ej: Módulos, Prioridad, etc.).
+
+ÚSALA para:
+- Ver qué campos personalizados tiene una lista
+- Conocer los IDs y opciones disponibles para usarlos en create_task`,
+    inputSchema: {
+      type: "object",
+      properties: {
+        listId: {
+          type: "string",
+          description: "ID de la lista de ClickUp",
+        },
+      },
+      required: ["listId"],
+    },
+  },
+  {
+    name: "get_task",
+    description: `Obtiene los detalles de una tarea específica de ClickUp (incluye campos personalizados).
+
+ÚSALA para:
+- Ver el contenido y estado de una tarea
+- Ver campos personalizados (módulos, etc.)
+- Obtener información antes de actualizar una tarea`,
+    inputSchema: {
+      type: "object",
+      properties: {
+        taskId: {
+          type: "string",
+          description: "ID de la tarea (ej: 86cad9f4x)",
+        },
+      },
+      required: ["taskId"],
     },
   },
 ];
@@ -320,6 +369,66 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         };
       }
 
+      case "get_task": {
+        const { taskId } = args as Record<string, unknown>;
+        if (typeof taskId !== "string") {
+          throw new McpError(ErrorCode.InvalidParams, "taskId es requerido");
+        }
+        const taskData = await clickup.getTask(taskId);
+
+        const fields: string[] = [
+          `**${taskData.name as string}**`,
+          `  Estado: ${(taskData.status as Record<string, unknown>)?.status as string ?? "—"}`,
+          `  Link: ${(taskData.url as string) ?? "—"}`,
+          `  Prioridad: ${taskData.priority ? (taskData.priority as Record<string, unknown>)?.priority as string ?? "—" : "—"}`,
+        ];
+
+        if (taskData.custom_fields) {
+          for (const cf of taskData.custom_fields as Array<Record<string, unknown>>) {
+            fields.push(`  ${cf.name as string}: ${JSON.stringify(cf.value ?? cf.type_config)}`);
+          }
+        }
+
+        return {
+          content: [{ type: "text", text: fields.join("\n") }],
+        };
+      }
+
+      case "get_custom_fields": {
+        const { listId: cfListId } = args as Record<string, unknown>;
+        if (typeof cfListId !== "string") {
+          throw new McpError(
+            ErrorCode.InvalidParams,
+            "listId es requerido",
+          );
+        }
+        const { fields } = await clickup.getListFields(cfListId);
+
+        const lines = (fields as Array<Record<string, unknown>>).map((f) => {
+          let extra = "";
+          if (f.type === "drop_down") {
+            const opts = (f.type_config as Record<string, unknown>)?.options as Array<Record<string, unknown>> ?? [];
+            const names = opts.map((o: Record<string, unknown>) => o.name as string).join(", ");
+            extra = `\n    Opciones: ${names}`;
+          }
+          return `  📦 **${f.name as string}** (${f.type as string})\n    ID: \`${f.id as string}\`${extra}`;
+        });
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: [
+                "## Campos personalizados",
+                ...lines,
+                "",
+                `Total: ${fields.length} campos`,
+              ].join("\n"),
+            },
+          ],
+        };
+      }
+
       // ── Actions ────────────────────────────────────────────────
       case "create_task": {
         const {
@@ -329,6 +438,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           priority,
           dueDate,
           assignees,
+          customFields,
         } = args as Record<string, unknown>;
 
         if (typeof listId !== "string" || typeof taskName !== "string") {
@@ -344,6 +454,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           priority: (priority as 1 | 2 | 3 | 4) ?? undefined,
           dueDate: (dueDate as string) ?? undefined,
           assignees: (assignees as number[]) ?? undefined,
+          customFields: (customFields as Array<{ id: string; value: unknown }>) ?? undefined,
         });
 
         return {
