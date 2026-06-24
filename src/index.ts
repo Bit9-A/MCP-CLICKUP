@@ -487,6 +487,19 @@ IMPORTANTE: Si el usuario no especifica listId, el server intenta resolverlo des
     },
   },
   {
+    name: "get_authenticated_user",
+    description: `Obtiene el usuario autenticado de ClickUp (el dueño de la API key).
+
+ÚSALA para:
+- Saber quién está usando la API key
+- Conocer el ID de usuario para asignar tareas
+- Filtrar tareas por el usuario actual`,
+    inputSchema: {
+      type: "object",
+      properties: {},
+    },
+  },
+  {
     name: "get_project_config",
     description: `Obtiene la configuración del proyecto actual asociada a una lista de ClickUp.
 
@@ -640,9 +653,14 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         }
         const taskData = await clickup.getTask(taskId);
 
+        const assigneeNames = (taskData.assignees as Array<Record<string, unknown>> | undefined)
+          ?.map((a) => (a.username as string) ?? a.id as string)
+          .join(", ") ?? "—";
+
         const fields: string[] = [
           `**${taskData.name as string}**`,
           `  Estado: ${(taskData.status as Record<string, unknown>)?.status as string ?? "—"}`,
+          `  Asignado: ${assigneeNames}`,
           `  Link: ${(taskData.url as string) ?? "—"}`,
           `  Prioridad: ${taskData.priority ? (taskData.priority as Record<string, unknown>)?.priority as string ?? "—" : "—"}`,
         ];
@@ -755,7 +773,12 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const tasks = data.tasks as Array<Record<string, unknown>>;
         const lines = tasks.map((t: Record<string, unknown>) => {
           const st = (t.status as Record<string, unknown>)?.status as string ?? "—";
-          return `  • **${t.name as string}** — \`${t.id as string}\` [${st}]`;
+          const assignees = (t.assignees as Array<Record<string, unknown>> | undefined)
+            ?.map((a) => a.username as string)
+            .filter(Boolean)
+            .join(", ") ?? "";
+          const assigneeStr = assignees ? ` | 👤 ${assignees}` : "";
+          return `  • **${t.name as string}** — \`${t.id as string}\` [${st}]${assigneeStr}`;
         });
         return {
           content: [{
@@ -853,6 +876,23 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         await clickup.addComment(acTaskId, comment);
         return {
           content: [{ type: "text", text: `✅ Comentario agregado a tarea \`${acTaskId}\`` }],
+        };
+      }
+
+      case "get_authenticated_user": {
+        const user = await clickup.getAuthenticatedUser();
+        if (!user) {
+          return { content: [{ type: "text", text: "No se pudo determinar el usuario autenticado." }] };
+        }
+        return {
+          content: [{
+            type: "text",
+            text: [
+              `👤 **${user.username}**`,
+              `  ID: \`${user.id}\``,
+              `  Email: ${user.email}`,
+            ].join("\n"),
+          }],
         };
       }
 

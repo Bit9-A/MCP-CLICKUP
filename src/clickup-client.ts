@@ -83,6 +83,26 @@ export class ClickUpClient {
     return res.data.teams as Workspace[];
   }
 
+  async getAuthenticatedUser(): Promise<{ id: number; username: string; email: string } | null> {
+    const res = await this.client.get("/team");
+    const teams = res.data.teams as Array<Record<string, unknown>>;
+    // The first team's first member is usually the API key owner
+    for (const team of teams) {
+      const members = team.members as Array<Record<string, unknown>> | undefined;
+      if (members && members.length > 0) {
+        const user = members[0].user as Record<string, unknown> | undefined;
+        if (user) {
+          return {
+            id: user.id as number,
+            username: (user.username as string) ?? "—",
+            email: (user.email as string) ?? "—",
+          };
+        }
+      }
+    }
+    return null;
+  }
+
   async getSpaces(teamId: string): Promise<Space[]> {
     const res = await this.client.get(`/team/${teamId}/space`);
     return res.data.spaces as Space[];
