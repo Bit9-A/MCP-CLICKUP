@@ -29,6 +29,14 @@ export interface Workspace {
   members?: unknown[];
 }
 
+export interface Member {
+  id: number;
+  username: string;
+  email: string;
+  role: number;
+  roleName: string;
+}
+
 export interface Space {
   id: string;
   name: string;
@@ -101,6 +109,25 @@ export class ClickUpClient {
       }
     }
     return null;
+  }
+
+  async getWorkspaceMembers(teamId: string): Promise<Member[]> {
+    const res = await this.client.get(`/team/${teamId}`);
+    const team = res.data.team as Record<string, unknown>;
+    const members = team.members as Array<Record<string, unknown>> | undefined;
+    if (!members) return [];
+
+    const roleNames: Record<number, string> = { 1: "owner", 2: "admin", 3: "member", 4: "guest" };
+    return members.map((m) => {
+      const user = m.user as Record<string, unknown>;
+      return {
+        id: user.id as number,
+        username: (user.username as string) ?? "—",
+        email: (user.email as string) ?? "—",
+        role: (user.role as number) ?? 3,
+        roleName: roleNames[(user.role as number) ?? 3] ?? "member",
+      };
+    });
   }
 
   async getSpaces(teamId: string): Promise<Space[]> {

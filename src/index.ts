@@ -225,6 +225,25 @@ IMPORTANTE: Si el usuario no especifica listId, el server intenta resolverlo des
     },
   },
   {
+    name: "get_workspace_members",
+    description: `Lista los miembros de un workspace de ClickUp con sus IDs, nombres y roles.
+
+ÚSALA para:
+- Saber quiénes son los miembros del equipo
+- Obtener IDs de usuarios para asignar tareas
+- Ver roles (owner, admin, member, guest)`,
+    inputSchema: {
+      type: "object",
+      properties: {
+        teamId: {
+          type: "string",
+          description: "ID del workspace (teamId de get_workspaces)",
+        },
+      },
+      required: ["teamId"],
+    },
+  },
+  {
     name: "get_spaces",
     description: `Lista los espacios dentro de un workspace de ClickUp.
 
@@ -541,6 +560,30 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                 ...lines,
                 "",
                 `Total: ${workspaces.length}`,
+              ].join("\n"),
+            },
+          ],
+        };
+      }
+
+      case "get_workspace_members": {
+        const { teamId } = args as Record<string, unknown>;
+        if (typeof teamId !== "string") {
+          throw new McpError(ErrorCode.InvalidParams, "teamId es requerido");
+        }
+        const members = await clickup.getWorkspaceMembers(teamId);
+        const lines = members.map(
+          (m) => `  • **${m.username}** — \`${m.id}\` (${m.roleName}, ${m.email})`,
+        );
+        return {
+          content: [
+            {
+              type: "text",
+              text: [
+                `## Miembros del workspace`,
+                ...lines,
+                "",
+                `Total: ${members.length} miembros`,
               ].join("\n"),
             },
           ],
