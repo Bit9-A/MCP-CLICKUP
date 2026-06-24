@@ -23,32 +23,32 @@ if (args[0] === "setup") {
   const { existsSync } = require("fs");
   const { join } = require("path");
 
-  // Check if we're in a git repo
+  // Check if we're in a git repo (the MCP-CLICKUP repo itself)
   try {
     execSync("git rev-parse --git-dir", { stdio: "ignore" });
+    console.log("📦 Repositorio detectado. Buscando actualizaciones...");
+
+    // Fetch latest from origin without needing upstream tracking
+    execSync("git fetch origin", { stdio: "inherit" });
+
+    // Check current branch and if main has new commits
     const branch = execSync("git rev-parse --abbrev-ref HEAD", { encoding: "utf-8" }).trim();
-    console.log(`📦 Repositorio detectado. Rama actual: ${branch}`);
-
-    // Check if branch has upstream tracking
-    try {
-      execSync(`git rev-parse --abbrev-ref --symbolic-full-name ${branch}@{upstream}`, { stdio: "ignore" });
-    } catch {
-      // No upstream set — try to set it for common branch names
-      const mainBranch = branch === "main" || branch === "master" ? branch : "main";
-      try {
-        execSync(`git branch --set-upstream-to=origin/${mainBranch} ${branch}`, { stdio: "inherit" });
-        console.log(`  → Upstream configurado: origin/${mainBranch}`);
-      } catch {
-        console.log(`  ⚠ No se pudo configurar upstream automáticamente.`);
-        console.log(`  Ejecutá manualmente: git branch --set-upstream-to=origin/main ${branch}`);
-        return;
+    const behindCount = execSync("git rev-list --count HEAD..origin/main", { encoding: "utf-8" }).trim();
+    if (behindCount === "0") {
+      console.log("  ✅ Ya estás en la última versión.");
+    } else {
+      console.log(`  Nuevos commits disponibles: ${behindCount}`);
+      if (branch === "main") {
+        execSync("git pull origin main", { stdio: "inherit" });
+      } else {
+        // Merge main into current branch
+        console.log(`  Fusionando origin/main en ${branch}...`);
+        execSync("git merge origin/main", { stdio: "inherit" });
       }
+      execSync("npm install", { stdio: "inherit" });
+      execSync("npm run build", { stdio: "inherit" });
+      console.log("\n✅ Actualización completada. Configuración preservada.");
     }
-
-    execSync("git pull", { stdio: "inherit" });
-    execSync("npm install", { stdio: "inherit" });
-    execSync("npm run build", { stdio: "inherit" });
-    console.log("\n✅ Actualización completada. Configuración preservada.");
   } catch (err) {
     console.log("📦 Instalación global (npx).");
     console.log("  La próxima vez que ejecutes un comando se usará la última versión automáticamente.");
