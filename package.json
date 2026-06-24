@@ -1,9 +1,30 @@
 {
   "name": "mcp-clickup-server",
   "version": "1.0.0",
-  "description": "MCP server para integrar ClickUp con OpenCode/Gentle AI",
+  "description": "MCP server para integrar ClickUp con OpenCode/Gentle AI — creá tareas y explorá tu workspace desde lenguaje natural",
   "type": "module",
   "main": "dist/index.js",
+  "bin": {
+    "mcp-clickup-server": "./dist/index.js"
+  },
+  "files": [
+    "dist/",
+    "scripts/",
+    ".env.example",
+    "README.md"
+  ],
+  "keywords": [
+    "clickup",
+    "mcp",
+    "opencode",
+    "gentle-ai",
+    "task-management"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Bit9-A/MCP-CLICKUP.git"
+  },
+  "homepage": "https://github.com/Bit9-A/MCP-CLICKUP",
   "scripts": {
     "setup": "node scripts/setup.mjs",
     "dev": "node --env-file .env --import tsx src/index.ts",

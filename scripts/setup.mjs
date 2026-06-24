@@ -5,6 +5,7 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { execSync } from "node:child_process";
+import { homedir } from "node:os";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, "..");
@@ -48,10 +49,19 @@ async function collectApiKey() {
 }
 
 function writeEnv(key) {
-  console.log(`\n${Bold}Paso 2: Creando .env${Reset}`);
-  const envPath = join(ROOT, ".env");
-  writeFileSync(envPath, `CLICKUP_API_KEY=${key}\n`, "utf-8");
-  console.log(`  ✅ ${Green}.env creado${Reset}`);
+  console.log(`\n${Bold}Paso 2: Guardando API key${Reset}`);
+
+  // Global: ~/.config/mcp-clickup-server/.env
+  const globalDir = join(homedir(), ".config", "mcp-clickup-server");
+  const globalEnv = join(globalDir, ".env");
+  mkdirSync(globalDir, { recursive: true });
+  writeFileSync(globalEnv, `CLICKUP_API_KEY=${key}\n`, "utf-8");
+  console.log(`  ✅ ${Green}Global: ${globalEnv}${Reset}`);
+
+  // Local: ./.env (para desarrollo local)
+  const localEnv = join(ROOT, ".env");
+  writeFileSync(localEnv, `CLICKUP_API_KEY=${key}\n`, "utf-8");
+  console.log(`  ✅ ${Green}Local: ${localEnv}${Reset}`);
 }
 
 function installDeps() {

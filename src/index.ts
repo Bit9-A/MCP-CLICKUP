@@ -9,13 +9,38 @@ import {
   ErrorCode,
 } from "@modelcontextprotocol/sdk/types.js";
 import { ClickUpClient } from "./clickup-client.js";
+import { existsSync, readFileSync } from "node:fs";
+import { join as joinPath } from "node:path";
+import { homedir } from "node:os";
 
-// ── Config ──────────────────────────────────────────────────────────
-const API_KEY = process.env.CLICKUP_API_KEY;
-if (!API_KEY) {
-  console.error("❌ CLICKUP_API_KEY environment variable is required");
+// ── API Key detection ──────────────────────────────────────────────
+// Priority: 1) CLICKUP_API_KEY env var, 2) ~/.config/mcp-clickup-server/.env, 3) ./.env
+function detectApiKey(): string {
+  // 1. Env var
+  if (process.env.CLICKUP_API_KEY) return process.env.CLICKUP_API_KEY;
+
+  // 2. Global config
+  const globalEnv = joinPath(homedir(), ".config", "mcp-clickup-server", ".env");
+  if (existsSync(globalEnv)) {
+    const content = readFileSync(globalEnv, "utf-8");
+    const match = content.match(/^CLICKUP_API_KEY=(.+)$/m);
+    if (match) return match[1].trim();
+  }
+
+  // 3. Local .env
+  const localEnv = joinPath(process.cwd(), ".env");
+  if (existsSync(localEnv)) {
+    const content = readFileSync(localEnv, "utf-8");
+    const match = content.match(/^CLICKUP_API_KEY=(.+)$/m);
+    if (match) return match[1].trim();
+  }
+
+  console.error("❌ CLICKUP_API_KEY no encontrada.");
+  console.error("   Ejecutá: npx mcp-clickup-server setup");
   process.exit(1);
 }
+
+const API_KEY = detectApiKey();
 
 const clickup = new ClickUpClient(API_KEY);
 
