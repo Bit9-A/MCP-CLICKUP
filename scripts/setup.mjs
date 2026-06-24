@@ -71,6 +71,11 @@ function installDeps() {
 }
 
 function buildProject() {
+  const distIndex = join(ROOT, "dist", "index.js");
+  if (existsSync(distIndex)) {
+    console.log(`\n${Bold}Paso 4: Server ya compilado, omitiendo build${Reset}`);
+    return;
+  }
   console.log(`\n${Bold}Paso 4: Compilando TypeScript${Reset}`);
   execSync("npx tsc", { cwd: ROOT, stdio: "inherit" });
   console.log(`  ✅ ${Green}Build completado${Reset}`);
