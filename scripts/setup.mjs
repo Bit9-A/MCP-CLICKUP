@@ -165,6 +165,17 @@ function printManualInstructions() {
   console.log(`  ${Dim}${JSON.stringify({ mcpServers: { clickup: antigravityEntry() } }, null, 2)}${Reset}`);
 }
 
+// ── Helpers ──────────────────────────────────────────────────────────
+
+function readApiKeyFromGlobal() {
+  const globalEnv = join(homedir(), ".config", "mcp-clickup-server", ".env");
+  if (existsSync(globalEnv)) {
+    const match = readFileSync(globalEnv, "utf-8").match(/^CLICKUP_API_KEY=(.+)$/m);
+    if (match) return match[1].trim();
+  }
+  return null;
+}
+
 // ── Project configuration ──────────────────────────────────────────
 
 function parseClickUpUrl(url) {
@@ -368,6 +379,22 @@ ${Green}╔═══════════════════════
 // ── Main ───────────────────────────────────────────────────────────
 
 async function main() {
+  const isReconfigure = process.argv.includes("--reconfigure");
+
+  if (isReconfigure) {
+    printBanner();
+    console.log(`  ${Dim}Modo reconfiguración: se saltea API key, install y build.${Reset}\n`);
+    const key = readApiKeyFromGlobal();
+    if (!key) {
+      console.log(`  ${Yellow}No se encontró API key global. Ejecutá el setup completo primero.${Reset}`);
+      return;
+    }
+    console.log(`\n${Bold}Paso único: Configurar proyecto actual${Reset}`);
+    await configureProject(key);
+    console.log(`\n  ✅ ${Green}Reconfiguración completada.${Reset}`);
+    return;
+  }
+
   printBanner();
 
   const key = await collectApiKey();

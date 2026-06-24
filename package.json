@@ -32,6 +32,7 @@
     "build": "npx tsc --project .",
     "postinstall": "test -f dist/index.js || npx tsc",
     "start": "node --env-file .env dist/index.js",
+    "update": "node bin/mcp-clickup-server.cjs update",
     "prestart": "node -e \"require('fs').existsSync('.env') || (console.error('❌ Creá el .env primero: npm run setup'), process.exit(1))\""
   },
   "dependencies": {
