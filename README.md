@@ -8,10 +8,12 @@ Model Context Protocol server for integrating ClickUp with OpenCode, Antigravity
 
 - [Capabilities](#capabilities)
 - [Installation](#installation)
+- [Usage](#usage)
+- [Updating](#updating)
 - [Configuration](#configuration)
 - [API Key](#api-key)
+- [Per-Project Configuration](#per-project-configuration)
 - [Available Tools](#available-tools)
-- [Usage Examples](#usage-examples)
 - [Development](#development)
 - [Troubleshooting](#troubleshooting)
 - [License](#license)
@@ -26,8 +28,10 @@ Model Context Protocol server for integrating ClickUp with OpenCode, Antigravity
 | Explore lists | "What lists are in my space?" |
 | View statuses | "What statuses does the SIGESP list have?" |
 | View modules | "What modules are available?" |
+| View team members | "Who are the members of this workspace?" |
 | Create tasks | "Create a high-priority task in SIGESP called 'Review pending items' with module TESORERIA" |
 | Update tasks | "Change task 86cad8gv7 to completed with high priority" |
+| Assign tasks | "Assign task 86cad8gv7 to Luis Sanchez" |
 | Create subtasks | "Add a subtask to task 86cacpvg1" |
 | Add comments | "Add a comment to the task saying I already reviewed it" |
 | Delete tasks | "Delete the test task" |
@@ -36,8 +40,6 @@ Model Context Protocol server for integrating ClickUp with OpenCode, Antigravity
 ---
 
 ## Installation
-
-### Quick install (recommended)
 
 Run this in any project directory:
 
@@ -53,7 +55,43 @@ The setup script will:
 
 After installation, restart your IDE. The ClickUp tools will be available immediately.
 
-> **Note:** `npx mcp-clickup-server setup` works from any directory. You only need to run it once globally, and optionally again per project to associate a specific list.
+---
+
+## Usage
+
+Once installed, you can interact with ClickUp using natural language. The assistant will use the tools automatically based on your request.
+
+Examples:
+
+- "Show me my workspaces"
+- "Who are the members of this workspace?"
+- "Create a task in SIGESP called 'Review Q3 budget' assigned to Luis"
+- "What tasks are pending in this project?"
+- "Add a comment to task 86cad8gv7 saying I reviewed it"
+
+If a project has been configured with a ClickUp list, you can omit the list name and the assistant will use the configured list automatically.
+
+---
+
+## Updating
+
+To update to the latest version without losing your configuration:
+
+```bash
+npx mcp-clickup-server update
+```
+
+This preserves your API key and per-project settings. If you installed via git, it pulls the latest code, installs dependencies, and rebuilds.
+
+### Reconfigure a project
+
+To change which ClickUp list is associated with the current project:
+
+```bash
+npx mcp-clickup-server reconfigure
+```
+
+This skips the API key and dependency steps and goes directly to the project configuration wizard.
 
 ---
 
@@ -130,7 +168,13 @@ During setup, you will be prompted to configure the current project. You can:
 1. **Paste a ClickUp list URL** - The setup parses the URL and extracts the list and workspace IDs.
 2. **Browse workspaces interactively** - Select from your workspaces, spaces, and lists.
 3. **Enter a list ID manually** - If you already know the ID.
-4. **Skip** - Configure later by creating `.mcp-clickup.json` manually.
+4. **Skip** - Configure later.
+
+To change the configuration later, run:
+
+```bash
+npx mcp-clickup-server reconfigure
+```
 
 ### Manual Configuration
 
@@ -148,36 +192,38 @@ Create a `.mcp-clickup.json` file in your project root:
 
 ### How It Works
 
-When you ask the assistant to create a task without specifying a list, it calls the `get_project_config` tool to check if the current project has an associated list. If configured, it uses that list automatically.
+When you ask the assistant to create a task or list tasks without specifying a list, the server checks for `.mcp-clickup.json` in the current project directory. If found, it uses the configured list automatically.
 
 ---
 
 ## Available Tools
 
-The server exposes 14 tools for ClickUp interaction:
+The server exposes 16 tools for ClickUp interaction:
 
 | Tool | Description |
 |------|-------------|
 | `get_workspaces` | List all accessible workspaces |
+| `get_workspace_members` | List members with IDs, names, and roles |
+| `get_authenticated_user` | Get the current user's info (ID, name, email) |
 | `get_spaces` | List spaces within a workspace |
 | `get_folders` | List folders within a space |
 | `get_lists` | List lists within a space or folder |
 | `get_list_statuses` | View available statuses for a list |
 | `get_custom_fields` | View custom fields (e.g., MODULE dropdown) |
-| `get_tasks` | List tasks with optional filters |
-| `get_task` | Get detailed task information |
+| `get_tasks` | List tasks with optional filters (includes assignees) |
+| `get_task` | Get detailed task information (includes assignees) |
 | `get_task_comments` | View comments on a task |
+| `get_project_config` | Get the project's associated ClickUp list |
 | `create_task` | Create a complete task with all fields |
 | `update_task` | Update an existing task |
 | `add_comment` | Add a comment to a task |
 | `delete_task` | Delete a task |
-| `get_project_config` | Get the project's associated ClickUp list |
 
 ### create_task Parameters
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `listId` | string | Yes | ClickUp list ID |
+| `listId` | string | No* | ClickUp list ID (falls back to project config) |
 | `name` | string | Yes | Task title |
 | `description` | string | No | Markdown-supported description |
 | `status` | string | No | Initial status (e.g., "pendiente", "en curso") |
@@ -185,45 +231,11 @@ The server exposes 14 tools for ClickUp interaction:
 | `dueDate` | string | No | ISO date string or millisecond timestamp |
 | `startDate` | string | No | Start date (ISO or timestamp) |
 | `tags` | string[] | No | Tags for the task |
-| `assignees` | number[] | No | User IDs to assign |
+| `assignees` | number[] | No | User IDs to assign (use `get_workspace_members` to find IDs) |
 | `parent` | string | No | Parent task ID for subtasks |
 | `customFields` | array | No | Custom field values (e.g., module assignments) |
 
----
-
-## Usage Examples
-
-**Browse workspace structure:**
-
-```
-Show me my ClickUp workspaces
-What spaces are in workspace 90151439364?
-What lists are in this space?
-```
-
-**Create tasks:**
-
-```
-Create a task in SIGESP called "Review Q3 budget" with high priority
-Create a task in list 901513520682 named "Fix login bug" with status "en curso" and module TESORERIA
-```
-
-**Manage tasks:**
-
-```
-Change task 86cad8gv7 to "completado"
-Add a subtask to 86cacpvg1 called "Verify calculations"
-Add a comment to task 86cad8gv7: "This has been reviewed"
-Delete task 86cad8gv7
-```
-
-**Query tasks:**
-
-```
-Show me all tasks in SIGESP
-What are the pending tasks in my workspace?
-Show me task 86cad8gv7 details
-```
+*`listId` is optional if the project has a `.mcp-clickup.json` configuration.
 
 ---
 
@@ -233,7 +245,7 @@ Show me task 86cad8gv7 details
 npm run dev               # Development mode with hot reload
 npm run build             # Compile TypeScript
 npm start                 # Production mode
-npx mcp-clickup-server setup  # Re-run configuration wizard (from any project)
+npm run update            # Update from git (preserves config)
 ```
 
 ---
