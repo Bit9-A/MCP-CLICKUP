@@ -519,6 +519,67 @@ IMPORTANTE: Si el usuario no especifica listId, el server intenta resolverlo des
     },
   },
   {
+    name: "create_space",
+    description: `Crea un espacio en un workspace de ClickUp.
+
+ÚSALA cuando el usuario pida:
+- "Crear espacio", "nuevo espacio", "agregar espacio"
+- Organizar el workspace en espacios nuevos`,
+    inputSchema: {
+      type: "object",
+      properties: {
+        teamId: {
+          type: "string",
+          description: "ID del workspace donde crear el espacio",
+        },
+        name: {
+          type: "string",
+          description: "Nombre del espacio",
+        },
+      },
+      required: ["teamId", "name"],
+    },
+  },
+  {
+    name: "create_list",
+    description: `Crea una lista en un espacio de ClickUp.
+
+ÚSALA cuando el usuario pida:
+- "Crear lista", "nueva lista", "agregar lista"
+- Organizar tareas en listas nuevas`,
+    inputSchema: {
+      type: "object",
+      properties: {
+        spaceId: {
+          type: "string",
+          description: "ID del espacio donde crear la lista",
+        },
+        name: {
+          type: "string",
+          description: "Nombre de la lista",
+        },
+        content: {
+          type: "string",
+          description: "Descripción de la lista",
+        },
+        status: {
+          type: "string",
+          description: "Estado default de la lista",
+        },
+        priority: {
+          type: "number",
+          description: "Prioridad default: 1 (Urgente) a 4 (Baja)",
+          enum: [1, 2, 3, 4],
+        },
+        assignee: {
+          type: "number",
+          description: "ID del usuario asignado por defecto",
+        },
+      },
+      required: ["spaceId", "name"],
+    },
+  },
+  {
     name: "get_project_config",
     description: `Obtiene la configuración del proyecto actual asociada a una lista de ClickUp.
 
@@ -885,6 +946,40 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         await clickup.deleteTask(delTaskId);
         return {
           content: [{ type: "text", text: `🗑️ Tarea \`${delTaskId}\` eliminada` }],
+        };
+      }
+
+      case "create_space": {
+        const { teamId: csTeamId, name: csName } = args as Record<string, unknown>;
+        if (typeof csTeamId !== "string" || typeof csName !== "string") {
+          throw new McpError(ErrorCode.InvalidParams, "teamId y name son requeridos");
+        }
+        const space = await clickup.createSpace(csTeamId, { name: csName });
+        return {
+          content: [{
+            type: "text",
+            text: `✅ Espacio creado: **${space.name as string}** (\`${space.id as string}\`)`,
+          }],
+        };
+      }
+
+      case "create_list": {
+        const { spaceId: clSpaceId, name: clName, content, status, priority, assignee } = args as Record<string, unknown>;
+        if (typeof clSpaceId !== "string" || typeof clName !== "string") {
+          throw new McpError(ErrorCode.InvalidParams, "spaceId y name son requeridos");
+        }
+        const list = await clickup.createList(clSpaceId, {
+          name: clName,
+          content: content as string | undefined,
+          status: status as string | undefined,
+          priority: priority as number | undefined,
+          assignee: assignee as number | undefined,
+        });
+        return {
+          content: [{
+            type: "text",
+            text: `✅ Lista creada: **${list.name as string}** (\`${list.id as string}\`)`,
+          }],
         };
       }
 

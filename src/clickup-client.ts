@@ -161,6 +161,29 @@ export class ClickUpClient {
     };
   }
 
+  // ── Creación ──────────────────────────────────────────────────
+
+  async createSpace(teamId: string, params: { name: string; color?: string }) {
+    const res = await this.client.post(`/team/${teamId}/space`, params);
+    return res.data;
+  }
+
+  async createList(
+    spaceId: string,
+    params: { name: string; content?: string; priority?: number; dueDate?: string; status?: string; assignee?: number },
+  ) {
+    const body: Record<string, unknown> = { name: params.name };
+    if (params.content) body.content = params.content;
+    if (params.priority !== undefined) body.priority = params.priority;
+    if (params.status) body.status = params.status;
+    if (params.assignee) body.assignee = params.assignee;
+    if (params.dueDate) {
+      body.due_date = /^\d+$/.test(params.dueDate) ? parseInt(params.dueDate, 10) : new Date(params.dueDate).getTime();
+    }
+    const res = await this.client.post(`/space/${spaceId}/list`, body);
+    return res.data;
+  }
+
   // ── Actions ────────────────────────────────────────────────────
 
   async createTask(listId: string, params: CreateTaskParams) {
