@@ -117,9 +117,46 @@ The token begins with `pk_`. The server resolves the API key in the following pr
 
 ---
 
+## Per-Project Configuration
+
+Each project can be associated with a specific ClickUp list, allowing the assistant to know where to create tasks without being told every time.
+
+### Setup
+
+```bash
+npm run setup
+```
+
+During setup, you will be prompted to configure the current project. You can:
+
+1. **Paste a ClickUp list URL** - The setup parses the URL and extracts the list and workspace IDs.
+2. **Browse workspaces interactively** - Select from your workspaces, spaces, and lists.
+3. **Enter a list ID manually** - If you already know the ID.
+4. **Skip** - Configure later by creating `.mcp-clickup.json` manually.
+
+### Manual Configuration
+
+Create a `.mcp-clickup.json` file in your project root:
+
+```json
+{
+  "project": "My Project",
+  "listId": "901513520682",
+  "listName": "SIGESP",
+  "workspaceId": "90151439364",
+  "workspaceName": "Ing. Aron Rojas."
+}
+```
+
+### How It Works
+
+When you ask the assistant to create a task without specifying a list, it calls the `get_project_config` tool to check if the current project has an associated list. If configured, it uses that list automatically.
+
+---
+
 ## Available Tools
 
-The server exposes 13 tools for ClickUp interaction:
+The server exposes 14 tools for ClickUp interaction:
 
 | Tool | Description |
 |------|-------------|
@@ -136,6 +173,7 @@ The server exposes 13 tools for ClickUp interaction:
 | `update_task` | Update an existing task |
 | `add_comment` | Add a comment to a task |
 | `delete_task` | Delete a task |
+| `get_project_config` | Get the project's associated ClickUp list |
 
 ### create_task Parameters
 

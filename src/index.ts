@@ -10,7 +10,7 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 import { ClickUpClient } from "./clickup-client.js";
 import { existsSync, readFileSync } from "node:fs";
-import { join as joinPath } from "node:path";
+import { join as joinPath, dirname } from "node:path";
 import { homedir } from "node:os";
 
 // ── API Key detection ──────────────────────────────────────────────
@@ -41,6 +41,42 @@ function detectApiKey(): string {
 }
 
 const API_KEY = detectApiKey();
+
+// ── Project config ────────────────────────────────────────────────
+interface ProjectConfig {
+  project?: string;
+  listId?: string;
+  listName?: string;
+  workspaceId?: string;
+  workspaceName?: string;
+  defaultStatus?: string;
+  defaultPriority?: number;
+}
+
+function findProjectConfig(startDir: string = process.cwd()): {
+  config: ProjectConfig | null;
+  path: string | null;
+} {
+  let dir = startDir;
+  // Walk up to 5 levels (should cover most project structures)
+  for (let i = 0; i < 5; i++) {
+    const candidate = joinPath(dir, ".mcp-clickup.json");
+    if (existsSync(candidate)) {
+      try {
+        const config = JSON.parse(readFileSync(candidate, "utf-8")) as ProjectConfig;
+        return { config, path: candidate };
+      } catch {
+        return { config: null, path: candidate };
+      }
+    }
+    const parent = dirname(dir);
+    if (parent === dir) break; // reached filesystem root
+    dir = parent;
+  }
+  return { config: null, path: null };
+}
+
+const PROJECT_CONFIG = findProjectConfig();
 
 const clickup = new ClickUpClient(API_KEY);
 
@@ -436,6 +472,18 @@ Las listas son donde se crean las tareas. Si no pasás folderId, busca listas si
       required: ["taskId", "comment"],
     },
   },
+  {
+    name: "get_project_config",
+    description: `Obtiene la configuración del proyecto actual asociada a una lista de ClickUp.
+
+ÚSALA cuando el usuario pida acciones sin especificar lista:
+- Detecta si el proyecto tiene una lista configurada en .mcp-clickup.json
+- Permite al asistente saber qué lista usar sin preguntar`,
+    inputSchema: {
+      type: "object",
+      properties: {},
+    },
+  },
 ];
 
 // ── Handlers ────────────────────────────────────────────────────────
@@ -792,6 +840,30 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         await clickup.addComment(acTaskId, comment);
         return {
           content: [{ type: "text", text: `✅ Comentario agregado a tarea \`${acTaskId}\`` }],
+        };
+      }
+
+      case "get_project_config": {
+        const pc = findProjectConfig(process.cwd());
+        if (!pc.config) {
+          return {
+            content: [{
+              type: "text",
+              text: "Este proyecto no tiene configurada una lista de ClickUp. Usá `npm run setup` en la raíz del proyecto para asociarlo.",
+            }],
+          };
+        }
+        const lines = [
+          `Proyecto: ${pc.config.project ?? "—"}`,
+          `Lista: ${pc.config.listName ?? "—"} (\`${pc.config.listId ?? "—"}\`)`,
+          `Workspace: ${pc.config.workspaceName ?? "—"} (\`${pc.config.workspaceId ?? "—"}\`)`,
+          pc.config.defaultStatus ? `Estado default: ${pc.config.defaultStatus}` : "",
+          pc.config.defaultPriority ? `Prioridad default: ${pc.config.defaultPriority}` : "",
+          "",
+          `Archivo: ${pc.path}`,
+        ].filter(Boolean).join("\n");
+        return {
+          content: [{ type: "text", text: lines }],
         };
       }
 
