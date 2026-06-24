@@ -8,7 +8,18 @@ import { execSync } from "node:child_process";
 import { homedir } from "node:os";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const ROOT = join(__dirname, "..");
+const SCRIPT_ROOT = join(__dirname, "..");
+
+// Detect canonical installation path: prefer cloned repo over npx cache
+function findInstallPath() {
+  // Check if we're in the known cloned repo
+  const repoPath = join(homedir(), "MCP-CLICKUP");
+  if (existsSync(join(repoPath, "dist", "index.js"))) return repoPath;
+  // Fall back to script location
+  if (existsSync(join(SCRIPT_ROOT, "dist", "index.js"))) return SCRIPT_ROOT;
+  return SCRIPT_ROOT;
+}
+const ROOT = findInstallPath();
 
 // ── Colors ─────────────────────────────────────────────────────────
 
