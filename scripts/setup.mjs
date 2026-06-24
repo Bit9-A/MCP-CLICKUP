@@ -69,10 +69,11 @@ function buildProject() {
 // ── OpenCode auto-register ─────────────────────────────────────────
 
 const OPENCODE_PATHS = [
-  join(osHome(), ".config", "opencode", "opencode.jsonc"),
+  // Prefer .json over .jsonc — having both causes conflicts
   join(osHome(), ".config", "opencode", "opencode.json"),
-  join(ROOT, "..", "opencode.jsonc"),
+  join(osHome(), ".config", "opencode", "opencode.jsonc"),
   join(ROOT, "..", "opencode.json"),
+  join(ROOT, "..", "opencode.jsonc"),
 ];
 
 function osHome() {
@@ -80,6 +81,14 @@ function osHome() {
 }
 
 function existingOpenCodeConfig() {
+  // Warn if both .json and .jsonc exist
+  const jsonPath = join(osHome(), ".config", "opencode", "opencode.json");
+  const jsoncPath = join(osHome(), ".config", "opencode", "opencode.jsonc");
+  if (existsSync(jsonPath) && existsSync(jsoncPath)) {
+    console.log(`  ${Yellow}⚠ Tenés opencode.json Y opencode.jsonc.${Reset}`);
+    console.log(`  ${Yellow}  Eliminá el .jsonc para evitar conflictos. El setup va a modificar solo el .json.${Reset}`);
+  }
+
   for (const p of OPENCODE_PATHS) {
     if (existsSync(p)) return p;
   }

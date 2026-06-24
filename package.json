@@ -7,7 +7,8 @@
   "scripts": {
     "setup": "node scripts/setup.mjs",
     "dev": "node --env-file .env --import tsx src/index.ts",
-    "build": "tsc",
+    "build": "npx tsc",
+    "postinstall": "npx tsc || true",
     "start": "node --env-file .env dist/index.js",
     "prestart": "node -e \"require('fs').existsSync('.env') || (console.error('❌ Creá el .env primero: npm run setup'), process.exit(1))\""
   },
