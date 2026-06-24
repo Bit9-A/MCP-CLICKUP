@@ -1,6 +1,6 @@
 {
   "name": "mcp-clickup-server",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "MCP server para integrar ClickUp con OpenCode/Gentle AI — creá tareas y explorá tu workspace desde lenguaje natural",
   "type": "module",
   "main": "dist/index.js",
