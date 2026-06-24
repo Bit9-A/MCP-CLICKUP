@@ -17,43 +17,13 @@ if (args[0] === "setup") {
     process.exit(1);
   });
 } else if (args[0] === "update") {
-  // Update to latest version without losing configuration
-  console.log("Actualizando MCP ClickUp Server...\n");
-  const { execSync } = require("child_process");
-  const { existsSync } = require("fs");
-  const { join } = require("path");
-
-  // Check if we're in a git repo (the MCP-CLICKUP repo itself)
-  try {
-    execSync("git rev-parse --git-dir", { stdio: "ignore" });
-    console.log("📦 Repositorio detectado. Buscando actualizaciones...");
-
-    // Fetch latest from origin without needing upstream tracking
-    execSync("git fetch origin", { stdio: "inherit" });
-
-    // Check current branch and if main has new commits
-    const branch = execSync("git rev-parse --abbrev-ref HEAD", { encoding: "utf-8" }).trim();
-    const behindCount = execSync("git rev-list --count HEAD..origin/main", { encoding: "utf-8" }).trim();
-    if (behindCount === "0") {
-      console.log("  ✅ Ya estás en la última versión.");
-    } else {
-      console.log(`  Nuevos commits disponibles: ${behindCount}`);
-      if (branch === "main") {
-        execSync("git pull origin main", { stdio: "inherit" });
-      } else {
-        // Merge main into current branch
-        console.log(`  Fusionando origin/main en ${branch}...`);
-        execSync("git merge origin/main", { stdio: "inherit" });
-      }
-      execSync("npm install", { stdio: "inherit" });
-      execSync("npm run build", { stdio: "inherit" });
-      console.log("\n✅ Actualización completada. Configuración preservada.");
-    }
-  } catch (err) {
-    console.log("📦 Instalación global (npx).");
-    console.log("  La próxima vez que ejecutes un comando se usará la última versión automáticamente.");
-    console.log("  Para forzar la última versión: npx mcp-clickup-server@latest <comando>");
-  }
+  console.log(`MCP ClickUp Server v${require("../package.json").version}`);
+  console.log("");
+  console.log("Para actualizar al instalar con npm (recomendado):");
+  console.log("  npx mcp-clickup-server@latest setup");
+  console.log("");
+  console.log("Si clonaste el repo:");
+  console.log("  git pull && npm install && npm run build");
 } else {
   // Start the MCP server (default)
   import("../dist/index.js").catch((err) => {
