@@ -37,7 +37,9 @@ Model Context Protocol server for integrating ClickUp with OpenCode, Antigravity
 
 ## Installation
 
-### Using npm (recommended)
+### Quick install (recommended)
+
+Run this in any project directory:
 
 ```bash
 npx mcp-clickup-server setup
@@ -46,18 +48,12 @@ npx mcp-clickup-server setup
 The setup script will:
 1. Prompt for your ClickUp API key
 2. Save the key to the global configuration
-3. Install dependencies and compile the server
-4. Detect OpenCode and/or Antigravity and register the MCP server automatically
-
-### Using git
-
-```bash
-git clone https://github.com/Bit9-A/MCP-CLICKUP.git
-cd MCP-CLICKUP
-npm run setup
-```
+3. Detect your IDE (OpenCode, Antigravity) and register the server
+4. Optionally associate the current project with a ClickUp list
 
 After installation, restart your IDE. The ClickUp tools will be available immediately.
+
+> **Note:** `npx mcp-clickup-server setup` works from any directory. You only need to run it once globally, and optionally again per project to associate a specific list.
 
 ---
 
@@ -65,7 +61,7 @@ After installation, restart your IDE. The ClickUp tools will be available immedi
 
 ### Automatic Configuration
 
-The `npm run setup` command automatically detects and configures supported IDEs. No manual steps are required.
+The `npx mcp-clickup-server setup` command automatically detects and configures supported IDEs. No manual steps are required.
 
 ### Manual Configuration
 
@@ -123,8 +119,10 @@ Each project can be associated with a specific ClickUp list, allowing the assist
 
 ### Setup
 
+Run this in your project directory:
+
 ```bash
-npm run setup
+npx mcp-clickup-server setup
 ```
 
 During setup, you will be prompted to configure the current project. You can:
@@ -232,10 +230,10 @@ Show me task 86cad8gv7 details
 ## Development
 
 ```bash
-npm run dev       # Development mode with hot reload
-npm run build     # Compile TypeScript
-npm start         # Production mode
-npm run setup     # Re-run configuration wizard
+npm run dev               # Development mode with hot reload
+npm run build             # Compile TypeScript
+npm start                 # Production mode
+npx mcp-clickup-server setup  # Re-run configuration wizard (from any project)
 ```
 
 ---
@@ -243,7 +241,7 @@ npm run setup     # Re-run configuration wizard
 ## Troubleshooting
 
 **"CLICKUP_API_KEY not found"**
-Run `npm run setup` again to configure the API key.
+Run `npx mcp-clickup-server setup` to configure the API key.
 
 **ClickUp tools not appearing in IDE after setup**
 Restart your IDE (OpenCode or Antigravity). Verify the configuration file has the correct format.
