@@ -108,6 +108,16 @@ function extractError(error: unknown): string {
       : "Error desconocido";
 }
 
+function resolveListId(argsListId: unknown): string {
+  if (typeof argsListId === "string" && argsListId.length > 0) return argsListId;
+  const pc = findProjectConfig(process.cwd());
+  if (pc.config?.listId) return pc.config.listId;
+  throw new McpError(
+    ErrorCode.InvalidParams,
+    "No se especificó listId y el proyecto no tiene configuración. Ejecutá `npx mcp-clickup-server setup` en la raíz del proyecto, o pasá el listId directamente.",
+  );
+}
+
 function formatList(items: { id: string; name: string }[], label: string) {
   if (items.length === 0) return `No se encontraron ${label}.`;
   const lines = items.map(
@@ -128,7 +138,9 @@ const TOOLS = [
 - Crear items en un tablero ClickUp
 - Cualquier solicitud de seguimiento de trabajo/tareas
 
-NO uses otras herramientas para crear tareas — esta es la herramienta específica para ClickUp.`,
+NO uses otras herramientas para crear tareas — esta es la herramienta específica para ClickUp.
+
+IMPORTANTE: Si el usuario no especifica listId, el server intenta resolverlo desde la configuración del proyecto (.mcp-clickup.json). Si el proyecto no está configurado, muestra un error indicando que ejecute el setup.`,
     inputSchema: {
       type: "object",
       properties: {
@@ -326,7 +338,9 @@ Las listas son donde se crean las tareas. Si no pasás folderId, busca listas si
 
 ÚSALA para:
 - Ver todas las tareas de una lista
-- Filtrar por estado, orden, etc.`,
+- Filtrar por estado, orden, etc.
+
+IMPORTANTE: Si el usuario no especifica listId, el server intenta resolverlo desde la configuración del proyecto (.mcp-clickup.json).`,
     inputSchema: {
       type: "object",
       properties: {
@@ -695,14 +709,15 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           customFields,
         } = args as Record<string, unknown>;
 
-        if (typeof listId !== "string" || typeof taskName !== "string") {
+        const resolvedListId = resolveListId(listId);
+        if (typeof taskName !== "string") {
           throw new McpError(
             ErrorCode.InvalidParams,
-            "listId y name son requeridos",
+            "name es requerido",
           );
         }
 
-        const task = await clickup.createTask(listId, {
+        const task = await clickup.createTask(resolvedListId, {
           name: taskName,
           description: (description as string) ?? undefined,
           status: (status as string) ?? undefined,
@@ -731,10 +746,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       case "get_tasks": {
         const { listId: tListId, statuses, page, orderBy } = args as Record<string, unknown>;
-        if (typeof tListId !== "string") {
-          throw new McpError(ErrorCode.InvalidParams, "listId es requerido");
-        }
-        const data = await clickup.getTasks(tListId, {
+        const resolvedTListId = resolveListId(tListId);
+        const data = await clickup.getTasks(resolvedTListId, {
           statuses: (statuses as string)?.split(",").map((s: string) => s.trim()).filter(Boolean),
           page: (page as number) ?? 0,
           orderBy: (orderBy as string) ?? undefined,
