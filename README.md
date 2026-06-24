@@ -1,84 +1,101 @@
-# 🚀 MCP ClickUp Server
+# MCP ClickUp Server
 
-**Servidor MCP para integrar ClickUp con OpenCode, Antigravity (Google IDE) o cualquier cliente MCP.**
-
-Creá tareas, consultá tu workspace, asigná módulos y más, todo desde lenguaje natural.
+Model Context Protocol server for integrating ClickUp with OpenCode, Antigravity (Google IDE), or any MCP-compatible client. Create tasks, query workspaces, assign modules, and manage your project workflow using natural language commands.
 
 ---
 
-## ✨ Qué podés hacer
+## Table of Contents
 
-| Acción | Ejemplo |
-|--------|---------|
-| 📋 **Ver estructura** | "Mostrame mis workspaces de ClickUp" |
-| 📁 **Explorar listas** | "Qué listas hay en mi espacio?" |
-| ✅ **Ver estados** | "Qué estados tiene la lista SIGESP?" |
-| 📦 **Ver módulos** | "Qué módulos están disponibles?" |
-| 📝 **Crear tareas** | "Creá una tarea urgente en SIGESP llamada 'Revisar pendientes' con módulo TESORERIA" |
-| 🔄 **Actualizar tareas** | "Cambiá la tarea 86cad8gv7 a completado y prioridad alta" |
-| 📥 **Crear subtareas** | "Agregá una subtarea a la tarea 86cacpvg1" |
-| 💬 **Comentar** | "Agregale un comentario a la tarea diciendo que ya lo revisé" |
-| 🗑️ **Eliminar** | "Borrá la tarea de prueba" |
-| 📊 **Listar tareas** | "Mostrame las tareas pendientes de SIGESP" |
+- [Capabilities](#capabilities)
+- [Installation](#installation)
+- [Configuration](#configuration)
+- [API Key](#api-key)
+- [Available Tools](#available-tools)
+- [Usage Examples](#usage-examples)
+- [Development](#development)
+- [Troubleshooting](#troubleshooting)
+- [License](#license)
 
 ---
 
-## 🔧 Instalación
+## Capabilities
 
-### 1. Clonar el repo
+| Action | Example Command |
+|--------|----------------|
+| Browse workspaces | "Show me my ClickUp workspaces" |
+| Explore lists | "What lists are in my space?" |
+| View statuses | "What statuses does the SIGESP list have?" |
+| View modules | "What modules are available?" |
+| Create tasks | "Create a high-priority task in SIGESP called 'Review pending items' with module TESORERIA" |
+| Update tasks | "Change task 86cad8gv7 to completed with high priority" |
+| Create subtasks | "Add a subtask to task 86cacpvg1" |
+| Add comments | "Add a comment to the task saying I already reviewed it" |
+| Delete tasks | "Delete the test task" |
+| List tasks | "Show me the pending tasks in SIGESP" |
+
+---
+
+## Installation
+
+### Using npm (recommended)
+
+```bash
+npx mcp-clickup-server setup
+```
+
+The setup script will:
+1. Prompt for your ClickUp API key
+2. Save the key to the global configuration
+3. Install dependencies and compile the server
+4. Detect OpenCode and/or Antigravity and register the MCP server automatically
+
+### Using git
 
 ```bash
 git clone https://github.com/Bit9-A/MCP-CLICKUP.git
 cd MCP-CLICKUP
-```
-
-### 2. Setup automático
-
-```bash
 npm run setup
 ```
 
-Esto va a:
-1. Pedirte tu **API Key de ClickUp** (la generás en https://app.clickup.com/settings/apps)
-2. Guardarla de forma segura
-3. Instalar dependencias y compilar
-4. Detectar **OpenCode** y/o **Antigravity** y registrar el servidor automáticamente
-
-### 3. Reiniciar el IDE
-
-Reiniciá OpenCode o Antigravity y ya podés empezar a usar los comandos.
+After installation, restart your IDE. The ClickUp tools will be available immediately.
 
 ---
 
-## ⚙️ Configuración manual
+## Configuration
 
-Si el setup no detecta tu IDE automáticamente, agregá esto manualmente:
+### Automatic Configuration
 
-### Para OpenCode
+The `npm run setup` command automatically detects and configures supported IDEs. No manual steps are required.
 
-En `~/.config/opencode/opencode.json`:
+### Manual Configuration
+
+If automatic detection fails, add the following configuration manually.
+
+**For OpenCode:**
+
+In `~/.config/opencode/opencode.json`:
 
 ```json
 {
   "mcp": {
     "clickup": {
-      "command": ["node", "/ruta/a/MCP-CLICKUP/dist/index.js"],
+      "command": ["node", "/path/to/MCP-CLICKUP/dist/index.js"],
       "type": "local"
     }
   }
 }
 ```
 
-### Para Antigravity (Google IDE)
+**For Antigravity (Google IDE):**
 
-En `~/.gemini/config/mcp_config.json`:
+In `~/.gemini/config/mcp_config.json`:
 
 ```json
 {
   "mcpServers": {
     "clickup": {
       "command": "node",
-      "args": ["/ruta/a/MCP-CLICKUP/dist/index.js"]
+      "args": ["/path/to/MCP-CLICKUP/dist/index.js"]
     }
   }
 }
@@ -86,83 +103,121 @@ En `~/.gemini/config/mcp_config.json`:
 
 ---
 
-## 🔑 API Key
+## API Key
 
-Necesitás un **Personal API Token** de ClickUp:
+A ClickUp Personal API Token is required. Generate one at:
 
-1. Andá a **Settings → Apps → API Token** o directo a https://app.clickup.com/settings/apps
-2. Copiá el token (empieza con `pk_`)
-3. Pegalo cuando `npm run setup` lo pida
+**Settings > Apps > API Token** or directly at https://app.clickup.com/settings/apps
 
-El servidor busca la key en este orden:
-1. Variable de entorno `CLICKUP_API_KEY`
-2. Archivo global `~/.config/mcp-clickup-server/.env`
-3. Archivo local `./.env`
+The token begins with `pk_`. The server resolves the API key in the following priority order:
 
----
-
-## 📦 Publicar en npm (para compartir)
-
-Una vez que el setup esté listo, tus compañeros pueden instalarlo con:
-
-```bash
-npx mcp-clickup-server setup
-```
-
-Sin clonar, sin rutas absolutas, sin config manual.
+1. `CLICKUP_API_KEY` environment variable
+2. Global configuration file at `~/.config/mcp-clickup-server/.env`
+3. Local `.env` file in the project directory
 
 ---
 
-## 🛠️ Desarrollo
+## Available Tools
 
-```bash
-npm run dev      # Modo desarrollo con recarga
-npm run build    # Compilar TypeScript
-npm start        # Modo producción
-```
+The server exposes 13 tools for ClickUp interaction:
 
----
-
-## 📋 Tools disponibles (13)
-
-| Tool | Descripción |
+| Tool | Description |
 |------|-------------|
-| `get_workspaces` | Lista workspaces |
-| `get_spaces` | Lista espacios de un workspace |
-| `get_folders` | Lista carpetas de un espacio |
-| `get_lists` | Lista listas de un espacio o carpeta |
-| `get_list_statuses` | Estados disponibles de una lista |
-| `get_custom_fields` | Campos personalizados (ej. MÓDULO) |
-| `get_tasks` | Lista tareas con filtros |
-| `get_task` | Detalle de una tarea |
-| `get_task_comments` | Comentarios de una tarea |
-| `create_task` | Crea tarea completa |
-| `update_task` | Actualiza tarea existente |
-| `add_comment` | Agrega comentario |
-| `delete_task` | Elimina tarea |
+| `get_workspaces` | List all accessible workspaces |
+| `get_spaces` | List spaces within a workspace |
+| `get_folders` | List folders within a space |
+| `get_lists` | List lists within a space or folder |
+| `get_list_statuses` | View available statuses for a list |
+| `get_custom_fields` | View custom fields (e.g., MODULE dropdown) |
+| `get_tasks` | List tasks with optional filters |
+| `get_task` | Get detailed task information |
+| `get_task_comments` | View comments on a task |
+| `create_task` | Create a complete task with all fields |
+| `update_task` | Update an existing task |
+| `add_comment` | Add a comment to a task |
+| `delete_task` | Delete a task |
+
+### create_task Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `listId` | string | Yes | ClickUp list ID |
+| `name` | string | Yes | Task title |
+| `description` | string | No | Markdown-supported description |
+| `status` | string | No | Initial status (e.g., "pendiente", "en curso") |
+| `priority` | number | No | 1 (Urgent), 2 (High), 3 (Normal), 4 (Low) |
+| `dueDate` | string | No | ISO date string or millisecond timestamp |
+| `startDate` | string | No | Start date (ISO or timestamp) |
+| `tags` | string[] | No | Tags for the task |
+| `assignees` | number[] | No | User IDs to assign |
+| `parent` | string | No | Parent task ID for subtasks |
+| `customFields` | array | No | Custom field values (e.g., module assignments) |
 
 ---
 
-## ❓ Solución de problemas
+## Usage Examples
 
-**"CLICKUP_API_KEY no encontrada"**
-→ Ejecutá `npm run setup` de nuevo para configurar la key.
+**Browse workspace structure:**
 
-**No aparece ClickUp en el IDE después de configurar**
-→ Reiniciá el IDE (OpenCode o Antigravity).
-→ Verificá que el archivo de configuración tenga el formato correcto.
+```
+Show me my ClickUp workspaces
+What spaces are in workspace 90151439364?
+What lists are in this space?
+```
 
-**Error al crear tarea: "Value must be an option index or uuid"**
-→ Usá `get_custom_fields` para ver los IDs de las opciones del dropdown.
-→ Pasá el UUID de la opción (no el nombre).
+**Create tasks:**
 
-**El servidor no arranca**
-→ Verificá que Node.js v20+ esté instalado.
-→ Corré `npm run build` para asegurarte de que el TypeScript esté compilado.
-→ Verificá que `dist/index.js` exista.
+```
+Create a task in SIGESP called "Review Q3 budget" with high priority
+Create a task in list 901513520682 named "Fix login bug" with status "en curso" and module TESORERIA
+```
+
+**Manage tasks:**
+
+```
+Change task 86cad8gv7 to "completado"
+Add a subtask to 86cacpvg1 called "Verify calculations"
+Add a comment to task 86cad8gv7: "This has been reviewed"
+Delete task 86cad8gv7
+```
+
+**Query tasks:**
+
+```
+Show me all tasks in SIGESP
+What are the pending tasks in my workspace?
+Show me task 86cad8gv7 details
+```
 
 ---
 
-## 📄 Licencia
+## Development
+
+```bash
+npm run dev       # Development mode with hot reload
+npm run build     # Compile TypeScript
+npm start         # Production mode
+npm run setup     # Re-run configuration wizard
+```
+
+---
+
+## Troubleshooting
+
+**"CLICKUP_API_KEY not found"**
+Run `npm run setup` again to configure the API key.
+
+**ClickUp tools not appearing in IDE after setup**
+Restart your IDE (OpenCode or Antigravity). Verify the configuration file has the correct format.
+
+**Error: "Value must be an option index or uuid"**
+Use the `get_custom_fields` tool to retrieve the available option UUIDs for dropdown fields. Pass the option UUID (not the display name) in the `customFields` parameter.
+
+**Server fails to start**
+Ensure Node.js v20 or later is installed. Run `npm run build` to verify the TypeScript compiles successfully. Confirm that `dist/index.js` exists.
+
+---
+
+## License
 
 MIT
