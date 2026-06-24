@@ -169,8 +169,9 @@ function printManualInstructions() {
 
 function parseClickUpUrl(url) {
   // https://app.clickup.com/{workspaceId}/v/l/{listId}
-  // or https://app.clickup.com/t/{taskId}
-  const listMatch = url.match(/app\.clickup\.com\/(\d+)\/v\/l\/([\w-]+)/);
+  // https://app.clickup.com/{workspaceId}/v/li/{listId}  (new format)
+  // https://app.clickup.com/t/{taskId}
+  const listMatch = url.match(/app\.clickup\.com\/(\d+)\/v\/(?:l|li)\/([\w-]+)/);
   if (listMatch) {
     return { type: "list", workspaceId: listMatch[1], listId: listMatch[2] };
   }
