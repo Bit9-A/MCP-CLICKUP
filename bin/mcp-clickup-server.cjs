@@ -26,14 +26,33 @@ if (args[0] === "setup") {
   // Check if we're in a git repo
   try {
     execSync("git rev-parse --git-dir", { stdio: "ignore" });
-    console.log("📦 Repositorio detectado. Actualizando...");
+    const branch = execSync("git rev-parse --abbrev-ref HEAD", { encoding: "utf-8" }).trim();
+    console.log(`📦 Repositorio detectado. Rama actual: ${branch}`);
+
+    // Check if branch has upstream tracking
+    try {
+      execSync(`git rev-parse --abbrev-ref --symbolic-full-name ${branch}@{upstream}`, { stdio: "ignore" });
+    } catch {
+      // No upstream set — try to set it for common branch names
+      const mainBranch = branch === "main" || branch === "master" ? branch : "main";
+      try {
+        execSync(`git branch --set-upstream-to=origin/${mainBranch} ${branch}`, { stdio: "inherit" });
+        console.log(`  → Upstream configurado: origin/${mainBranch}`);
+      } catch {
+        console.log(`  ⚠ No se pudo configurar upstream automáticamente.`);
+        console.log(`  Ejecutá manualmente: git branch --set-upstream-to=origin/main ${branch}`);
+        return;
+      }
+    }
+
     execSync("git pull", { stdio: "inherit" });
     execSync("npm install", { stdio: "inherit" });
+    execSync("npm run build", { stdio: "inherit" });
     console.log("\n✅ Actualización completada. Configuración preservada.");
-  } catch {
+  } catch (err) {
     console.log("📦 Instalación global (npx).");
     console.log("  La próxima vez que ejecutes un comando se usará la última versión automáticamente.");
-    console.log("  Si querés forzar la última versión: npx mcp-clickup-server@latest <comando>");
+    console.log("  Para forzar la última versión: npx mcp-clickup-server@latest <comando>");
   }
 } else {
   // Start the MCP server (default)
