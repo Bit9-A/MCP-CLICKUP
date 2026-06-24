@@ -5,11 +5,12 @@
   "type": "module",
   "main": "dist/index.js",
   "bin": {
-    "mcp-clickup-server": "./dist/index.js"
+    "mcp-clickup-server": "bin/mcp-clickup-server.cjs"
   },
   "files": [
     "dist/",
     "scripts/",
+    "bin/",
     ".env.example",
     "README.md"
   ],
