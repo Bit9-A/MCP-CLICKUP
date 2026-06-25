@@ -18,10 +18,9 @@ const FORMAT_KEYS = {
 
 const FORMAT_SERVER_ENTRY = {
   "command-array": (cmd) => ({
-    command: cmd.command,
-    args: cmd.args,
+    command: [cmd.command, ...cmd.args],
     type: "local",
-    description: "MCP server para ClickUp — crear tareas y descubrir estructura",
+    enabled: true,
   }),
   "command-string+args": (cmd) => cmd,
   "servers-key": (cmd) => cmd,
