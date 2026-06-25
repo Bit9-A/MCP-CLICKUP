@@ -175,7 +175,8 @@ In `~/.config/opencode/opencode.json`:
   "mcp": {
     "clickup": {
       "command": ["node", "/path/to/MCP-CLICKUP/dist/index.js"],
-      "type": "local"
+      "type": "local",
+      "enabled": true
     }
   }
 }
