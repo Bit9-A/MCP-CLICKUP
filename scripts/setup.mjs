@@ -7,19 +7,12 @@ import { fileURLToPath } from "node:url";
 import { execSync } from "node:child_process";
 import { homedir } from "node:os";
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const SCRIPT_ROOT = join(__dirname, "..");
+import { TARGET_REGISTRY, ROOT } from "./ide-registry.mjs";
+import { detectAllTargets } from "./ide-registry.mjs";
+import { upsertMcpConfig } from "./config-writer.mjs";
+import { interactiveSelect } from "./interactive-selector.mjs";
 
-// Detect canonical installation path: prefer cloned repo over npx cache
-function findInstallPath() {
-  // Check if we're in the known cloned repo
-  const repoPath = join(homedir(), "MCP-CLICKUP");
-  if (existsSync(join(repoPath, "dist", "index.js"))) return repoPath;
-  // Fall back to script location
-  if (existsSync(join(SCRIPT_ROOT, "dist", "index.js"))) return SCRIPT_ROOT;
-  return SCRIPT_ROOT;
-}
-const ROOT = findInstallPath();
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 // ── Colors ─────────────────────────────────────────────────────────
 
@@ -92,88 +85,23 @@ function buildProject() {
   console.log(`  ✅ ${Green}Build completado${Reset}`);
 }
 
-// ── MCP config entries ─────────────────────────────────────────────
+// ── Instructions for non-writable tools ─────────────────────────────────
 
-function openCodeEntry() {
-  return {
-    command: ["node", join(ROOT, "dist", "index.js")],
-    type: "local",
-    description: "MCP server para ClickUp — crear tareas y descubrir estructura",
-  };
-}
-
-function antigravityEntry() {
-  return {
-    command: "node",
-    args: [join(ROOT, "dist", "index.js")],
-  };
-}
-
-// ── Platform detection ─────────────────────────────────────────────
-
-const OPENCODE_PATHS = [
-  join(homedir(), ".config", "opencode", "opencode.json"),
-  join(homedir(), ".config", "opencode", "opencode.jsonc"),
-  join(ROOT, "..", "opencode.json"),
-  join(ROOT, "..", "opencode.jsonc"),
-];
-
-const ANTIGRAVITY_PATH = join(homedir(), ".gemini", "config", "mcp_config.json");
-
-function detectPlatforms() {
-  const platforms = [];
-
-  // Detect OpenCode
-  const openCodeConfig = OPENCODE_PATHS.find(existsSync);
-  if (openCodeConfig) {
-    platforms.push({ name: "OpenCode", type: "opencode", path: openCodeConfig });
-    console.log(`  ${Dim}✓ Detectado: OpenCode (${openCodeConfig})${Reset}`);
+function printToolInstructions(target) {
+  const entry = { command: "node", args: [join(ROOT, "dist", "index.js")] };
+  console.log(`\n${Yellow}⚠ ${target.name}: configuración manual requerida${Reset}`);
+  console.log(`  La herramienta no soporta escritura automática.`);
+  if (target.id === "n8n") {
+    console.log(`  Agregá el siguiente MCP server en n8n como "clickup":`);
+    console.log(`  ${Dim}${JSON.stringify({ name: "clickup", ...entry }, null, 2)}${Reset}`);
+  } else if (target.id === "codex") {
+    console.log(`  Agregá en CodeX: Settings > Developer > MCP Servers`);
+    console.log(`  Con este comando:`);
+    console.log(`  ${Dim}${JSON.stringify(entry, null, 2)}${Reset}`);
+  } else {
+    console.log(`  Agregá manualmente el siguiente MCP entry en la configuración:`);
+    console.log(`  ${Dim}${JSON.stringify(entry, null, 2)}${Reset}`);
   }
-
-  // Detect Antigravity
-  if (existsSync(ANTIGRAVITY_PATH)) {
-    platforms.push({ name: "Antigravity (Google)", type: "antigravity", path: ANTIGRAVITY_PATH });
-    console.log(`  ${Dim}✓ Detectado: Antigravity (${ANTIGRAVITY_PATH})${Reset}`);
-  }
-
-  return platforms;
-}
-
-// ── Registry ───────────────────────────────────────────────────────
-
-function registerInOpenCode(configPath, key) {
-  let config = {};
-  try {
-    config = JSON.parse(readFileSync(configPath, "utf-8") || "{}");
-  } catch { /* file will be created */ }
-
-  if (!config.mcp) config.mcp = {};
-  config.mcp.clickup = openCodeEntry();
-
-  writeFileSync(configPath, JSON.stringify(config, null, 2) + "\n", "utf-8");
-  console.log(`  ✅ ${Green}Registrado en OpenCode${Reset}`);
-}
-
-function registerInAntigravity(configPath) {
-  let config = {};
-  try {
-    const content = readFileSync(configPath, "utf-8").trim();
-    config = content ? JSON.parse(content) : {};
-  } catch { /* file will be created */ }
-
-  if (!config.mcpServers) config.mcpServers = {};
-  config.mcpServers.clickup = antigravityEntry();
-
-  writeFileSync(configPath, JSON.stringify(config, null, 2) + "\n", "utf-8");
-  console.log(`  ✅ ${Green}Registrado en Antigravity${Reset}`);
-}
-
-function printManualInstructions() {
-  console.log(`\n${Yellow}⚠ No se detectó OpenCode ni Antigravity.${Reset}`);
-  console.log(`\n  Configuración manual para OpenCode:`);
-  console.log(`  ${Dim}${JSON.stringify({ mcp: { clickup: openCodeEntry() } }, null, 2)}${Reset}`);
-  console.log(`\n  Configuración manual para Antigravity:`);
-  console.log(`  ${Dim}${JSON.stringify({ mcpServers: { clickup: antigravityEntry() } }, null, 2)}${Reset}`);
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────
@@ -390,8 +318,13 @@ ${Green}╔═══════════════════════
 // ── Main ───────────────────────────────────────────────────────────
 
 async function main() {
-  const isReconfigure = process.argv.includes("--reconfigure");
+  const rawArgs = process.argv.slice(2);
+  const isReconfigure = rawArgs.includes("--reconfigure");
+  const detectOnly = rawArgs.includes("--detect-only");
+  const targetsIdx = rawArgs.findIndex((a) => a === "--targets");
+  const cliTargets = targetsIdx >= 0 ? rawArgs[targetsIdx + 1]?.split(",") : null;
 
+  // ── --reconfigure: project-only flow, unchanged from W2 ────────────
   if (isReconfigure) {
     printBanner();
     console.log(`  ${Dim}Modo reconfiguración: se saltea API key, install y build.${Reset}\n`);
@@ -406,6 +339,42 @@ async function main() {
     return;
   }
 
+  // ── Headless: --targets cursor,claude-desktop ──────────────────────
+  if (cliTargets) {
+    const invalid = cliTargets.filter((id) => !TARGET_REGISTRY.find((t) => t.id === id));
+    if (invalid.length) {
+      console.error(`${Yellow}IDs inválidos: ${invalid.join(", ")}${Reset}`);
+      console.error(`Válidos: ${TARGET_REGISTRY.map((t) => t.id).join(", ")}`);
+      process.exit(1);
+    }
+    const results = [];
+    for (const id of cliTargets) {
+      const target = TARGET_REGISTRY.find((t) => t.id === id);
+      if (!target.writable) {
+        printToolInstructions(target);
+        results.push({ id, ok: false, error: "not writable" });
+        continue;
+      }
+      const result = upsertMcpConfig(target, ROOT);
+      results.push({ id, ...result });
+      if (result.ok) console.log(`  ✅ ${Green}${target.name}${Reset}`);
+      else console.error(`  ❌ ${target.name}: ${result.error}`);
+    }
+    process.exit(results.every((r) => r.ok) ? 0 : 1);
+  }
+
+  // ── Headless: --detect-only ─────────────────────────────────────────
+  if (detectOnly) {
+    const results = detectAllTargets();
+    console.log(`\n${Bold}Herramientas MCP detectadas:${Reset}`);
+    results.forEach((r) => {
+      console.log(`  ${r.found ? "✓" : "✗"} ${r.name}: ${r.found ? r.path : "no detectado"}`);
+    });
+    console.log(`\n${Dim}Usá --targets <ids> para configurar herramientas específicas.${Reset}`);
+    return;
+  }
+
+  // ── Interactive full setup ──────────────────────────────────────────
   printBanner();
 
   const key = await collectApiKey();
@@ -414,19 +383,29 @@ async function main() {
   buildProject();
 
   console.log(`\n${Bold}Paso 5: Detectando plataformas...${Reset}`);
-  const platforms = detectPlatforms();
+  const detected = detectAllTargets();
+  detected.filter((t) => t.found).forEach((t) => {
+    console.log(`  ${Dim}✓ Detectado: ${t.name} (${t.path})${Reset}`);
+  });
 
-  if (platforms.length === 0) {
-    printManualInstructions();
-  } else {
-    console.log(`\n${Bold}Paso 6: Registrando MCP server...${Reset}`);
-    for (const p of platforms) {
-      if (p.type === "opencode") registerInOpenCode(p.path, key);
-      if (p.type === "antigravity") registerInAntigravity(p.path);
+  console.log(`\n${Bold}Paso 6: Seleccionando herramientas...${Reset}`);
+  const selectedIds = await interactiveSelect(detected);
+
+  if (selectedIds.length > 0) {
+    console.log(`\n${Bold}Paso 7: Registrando MCP server...${Reset}`);
+    for (const id of selectedIds) {
+      const target = TARGET_REGISTRY.find((t) => t.id === id);
+      if (!target.writable) {
+        printToolInstructions(target);
+        continue;
+      }
+      const result = upsertMcpConfig(target, ROOT);
+      if (result.ok) console.log(`  ✅ ${Green}${target.name}${Reset}`);
+      else console.error(`  ❌ ${target.name}: ${result.error}`);
     }
   }
 
-  console.log(`\n${Bold}Paso 7: Configurar proyecto actual (opcional)${Reset}`);
+  console.log(`\n${Bold}Paso 8: Configurar proyecto actual (opcional)${Reset}`);
   await configureProject(key);
 
   finish();

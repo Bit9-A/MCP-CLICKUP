@@ -1,6 +1,6 @@
 # MCP ClickUp Server
 
-Model Context Protocol server for integrating ClickUp with OpenCode, Antigravity (Google IDE), or any MCP-compatible client. Create tasks, query workspaces, assign modules, and manage your project workflow using natural language commands.
+A Model Context Protocol (MCP) server that connects ClickUp to your favorite AI coding tools. Create tasks, browse workspaces, assign work, and manage your project workflow using natural language.
 
 ---
 
@@ -8,6 +8,8 @@ Model Context Protocol server for integrating ClickUp with OpenCode, Antigravity
 
 - [Capabilities](#capabilities)
 - [Installation](#installation)
+- [Supported Tools](#supported-tools)
+- [Headless Mode](#headless-mode)
 - [Usage](#usage)
 - [Updating](#updating)
 - [Configuration](#configuration)
@@ -41,25 +43,78 @@ Model Context Protocol server for integrating ClickUp with OpenCode, Antigravity
 
 ## Installation
 
-Run this in any project directory:
+Run the setup wizard from any project directory:
 
 ```bash
 npx mcp-clickup-server setup
 ```
 
-The setup script will:
-1. Prompt for your ClickUp API key
-2. Save the key to the global configuration
-3. Detect your IDE (OpenCode, Antigravity) and register the server
-4. Optionally associate the current project with a ClickUp list
+The wizard will:
 
-After installation, restart your IDE. The ClickUp tools will be available immediately.
+1. Ask for your ClickUp API key
+2. Save the key to a global configuration file
+3. Detect installed MCP-compatible tools and let you choose where to register the server
+4. Optionally link the current project to a ClickUp list
+
+After setup, restart the IDE or AI tool where you installed the server. The ClickUp tools will be available immediately.
+
+> **Tip:** The setup never overwrites existing MCP servers unless you explicitly select that tool. It safely merges the ClickUp server into your existing configuration.
+
+---
+
+## Supported Tools
+
+The following MCP-compatible clients are supported. Detection and automatic configuration availability vary by platform.
+
+| Tool | Detected Automatically | Configured Automatically | Notes |
+|------|:----------------------:|:------------------------:|-------|
+| OpenCode | ✓ | ✓ | |
+| Antigravity (Google IDE) | ✓ | ✓ | |
+| Cursor | ✓ | ✓ | |
+| VS Code + Copilot | ✓ | ✓ | Uses the `mcp` / `servers` configuration |
+| Claude Desktop | ✓ | ✓ | macOS / Windows / Linux paths supported |
+| Claude Code | ✓ | ✓ | |
+| ChatGPT Desktop | ✓ | ✓ | |
+| Augment | ✓ | ✓ | |
+| Auggie | ✓ | ✓ | |
+| Windsurf | ✓ | ✓ | |
+| Roo Code | ✓ | ✓ | Detected through the VS Code extension storage |
+| n8n | ✗ | ✗ | Copy the MCP server command into the n8n workflow UI |
+| Codex (OpenAI) | ✗ | ✗ | Add the command to your Codex configuration file |
+| Add Agent (generic) | ✗ | ✗ | Paste the command into the agent's MCP settings |
+
+If a tool is not detected automatically, you can still select it manually in the interactive wizard or use `--targets` in headless mode.
+
+---
+
+## Headless Mode
+
+For CI/CD, dotfiles, or when you already know which tools you want to configure, skip the interactive wizard:
+
+```bash
+# Detect installed tools without writing any configuration
+npx mcp-clickup-server setup --detect-only
+
+# Configure specific tools by their ID
+npx mcp-clickup-server setup --targets cursor,claude-desktop,opencode
+
+# Update only the project-level ClickUp list association
+npx mcp-clickup-server reconfigure
+```
+
+> **Note:** `--reconfigure` only updates the project list association. It does not register the MCP server in IDEs. To register tools and update the project list, run setup first and then reconfigure.
+
+### Tool IDs
+
+Use these IDs with `--targets`:
+
+`opencode`, `antigravity`, `cursor`, `vscode-copilot`, `claude-desktop`, `claude-code`, `chatgpt`, `augment`, `auggie`, `windsurf`, `roo-code`, `n8n`, `codex`, `add-agent`
 
 ---
 
 ## Usage
 
-Once installed, you can interact with ClickUp using natural language. The assistant will use the tools automatically based on your request.
+Once installed, interact with ClickUp using natural language. The assistant will call the appropriate tools automatically.
 
 Examples:
 
@@ -75,7 +130,7 @@ If a project has been configured with a ClickUp list, you can omit the list name
 
 ## Updating
 
-To update to the latest version without losing your configuration:
+Update to the latest version without losing your configuration:
 
 ```bash
 npx mcp-clickup-server update
@@ -91,7 +146,7 @@ To change which ClickUp list is associated with the current project:
 npx mcp-clickup-server reconfigure
 ```
 
-This skips the API key and dependency steps and goes directly to the project configuration wizard.
+This skips the API key, dependency, and IDE registration steps and goes directly to the project configuration wizard.
 
 ---
 
@@ -99,13 +154,19 @@ This skips the API key and dependency steps and goes directly to the project con
 
 ### Automatic Configuration
 
-The `npx mcp-clickup-server setup` command automatically detects and configures supported IDEs. No manual steps are required.
+`npx mcp-clickup-server setup` detects and configures supported tools automatically. No manual file editing is required.
 
 ### Manual Configuration
 
-If automatic detection fails, add the following configuration manually.
+If automatic detection fails or you prefer to configure a tool by hand, use the command below and add it to your tool's MCP settings:
 
-**For OpenCode:**
+```bash
+node /path/to/MCP-CLICKUP/dist/index.js
+```
+
+Each client stores MCP servers differently. The setup wizard writes to the standard location for each tool; refer to your client's documentation for the exact file and schema.
+
+**OpenCode example:**
 
 In `~/.config/opencode/opencode.json`:
 
@@ -120,7 +181,7 @@ In `~/.config/opencode/opencode.json`:
 }
 ```
 
-**For Antigravity (Google IDE):**
+**Antigravity (Google IDE) example:**
 
 In `~/.gemini/config/mcp_config.json`:
 
@@ -165,10 +226,10 @@ npx mcp-clickup-server setup
 
 During setup, you will be prompted to configure the current project. You can:
 
-1. **Paste a ClickUp list URL** - The setup parses the URL and extracts the list and workspace IDs.
-2. **Browse workspaces interactively** - Select from your workspaces, spaces, and lists.
-3. **Enter a list ID manually** - If you already know the ID.
-4. **Skip** - Configure later.
+1. **Paste a ClickUp list URL** — The setup parses the URL and extracts the list and workspace IDs.
+2. **Browse workspaces interactively** — Select from your workspaces, spaces, and lists.
+3. **Enter a list ID manually** — If you already know the ID.
+4. **Skip** — Configure later.
 
 To change the configuration later, run:
 
@@ -255,8 +316,11 @@ npm run update            # Update from git (preserves config)
 **"CLICKUP_API_KEY not found"**
 Run `npx mcp-clickup-server setup` to configure the API key.
 
-**ClickUp tools not appearing in IDE after setup**
-Restart your IDE (OpenCode or Antigravity). Verify the configuration file has the correct format.
+**ClickUp tools not appearing after setup**
+Restart the IDE or AI tool where you installed the server, then verify the configuration file was updated.
+
+**A tool was not detected automatically**
+Use the `--targets` flag to force configuration, or add the server manually using the command shown in the [Manual Configuration](#manual-configuration) section.
 
 **Error: "Value must be an option index or uuid"**
 Use the `get_custom_fields` tool to retrieve the available option UUIDs for dropdown fields. Pass the option UUID (not the display name) in the `customFields` parameter.
