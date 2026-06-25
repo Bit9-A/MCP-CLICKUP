@@ -4,14 +4,10 @@
 
 const args = process.argv.slice(2);
 
-if (args[0] === "setup") {
-  // Run the setup wizard instead of starting the server
-  import("../scripts/setup.mjs").catch((err) => {
-    console.error("Error al ejecutar setup:", err.message);
-    process.exit(1);
-  });
-} else if (args[0] === "reconfigure") {
-  // Re-run only the project config step, skip API key/install/build
+// Check CLI flags before positional routing (C1): --targets and --detect-only
+// route to the setup module, same as "setup" subcommand
+if (args[0] === "setup" || args[0] === "reconfigure" || args.includes("--targets") || args.includes("--detect-only")) {
+  // Run setup wizard — handles setup, reconfigure, --targets, --detect-only internally
   import("../scripts/setup.mjs").catch((err) => {
     console.error("Error al ejecutar setup:", err.message);
     process.exit(1);
