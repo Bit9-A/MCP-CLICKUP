@@ -43,6 +43,10 @@ A Model Context Protocol (MCP) server that connects ClickUp to your favorite AI 
 
 ## Installation
 
+> **Requirements:** Node 22.5+ for the local task cache (`node:sqlite`). Everything else works on older Node, but the cache tools report the requirement instead of booting a broken server.
+
+Nothing to provision by hand: the cache database, its directories and its schema are created automatically the first time a cache tool runs (`sync_tasks`, `get_completed_tasks`, `get_workload`). No migration command, no setup step.
+
 Run the setup wizard from any project directory:
 
 ```bash
@@ -260,7 +264,7 @@ When you ask the assistant to create a task or list tasks without specifying a l
 
 ## Available Tools
 
-The server exposes 16 tools for ClickUp interaction:
+The server exposes 25 tools for ClickUp interaction:
 
 | Tool | Description |
 |------|-------------|
@@ -276,10 +280,55 @@ The server exposes 16 tools for ClickUp interaction:
 | `get_task` | Get detailed task information (includes assignees) |
 | `get_task_comments` | View comments on a task |
 | `get_project_config` | Get the project's associated ClickUp list |
+| `get_space_tags` | List the tags defined in a space |
 | `create_task` | Create a complete task with all fields |
 | `update_task` | Update an existing task |
 | `add_comment` | Add a comment to a task |
 | `delete_task` | Delete a task |
+| `create_space` | Create a space in a workspace |
+| `create_list` | Create a list in a space |
+| `create_folder` | Create a folder in a space (or a subfolder, if enabled) |
+| `create_space_tag` | Create a space-level tag |
+| `add_tag_to_task` | Add an existing tag to a task |
+| `sync_tasks` | Sync ClickUp tasks into the local SQLite cache (list or workspace scope) |
+| `get_completed_tasks` | Query completed tasks from the cache by date range, assignee, project |
+| `get_workload` | Count open/closed tasks by status and assignee, from the cache |
+
+### Local task cache
+
+`sync_tasks` builds a local, **rebuildable** projection of your tasks in SQLite. ClickUp stays the only source of truth: delete the file and re-sync.
+
+- Location: `${XDG_DATA_HOME:-~/.local/share}/mcp-clickup-server/clickup.db`, or `CLICKUP_CACHE_DB` if set. Created `0600` (task names, URLs and assignee ids live there; the API key never does).
+- Reads (`get_completed_tasks`, `get_workload`) hit the cache. Writes still call ClickUp first and then project the returned task into the cache (best-effort — a cache failure never fails a write).
+- `sync_tasks` with no `listId`/`teamId` falls back to the project's `.mcp-clickup.json`, and registers the project so `project: "<name>"` works in queries.
+- First sync of a scope is a full sweep. Later syncs are deltas keyed on `date_updated_gt`.
+- A task that disappears from a **complete full sweep** is flagged `archived = 1`, never deleted. Deletions upstream are therefore detected on `sync_tasks({ full: true })`.
+- A failed or partial sweep never archives anything and never advances the watermark.
+- Same file is safe to share across projects and concurrent sessions: WAL mode, `busy_timeout`, one writer at a time.
+
+Verify the cache locally with plain SQL:
+
+```bash
+sqlite3 ~/.local/share/mcp-clickup-server/clickup.db \
+  "SELECT status, COUNT(*) FROM tasks WHERE archived = 0 GROUP BY status;"
+```
+
+Run the test suite (no network calls) with `npm test`.
+
+### Classification limits
+
+ClickUp's public API does not expose everything the UI does. Check this before promising a workflow to a user:
+
+| Mechanism | Supported | Endpoint |
+|-----------|-----------|----------|
+| Folders | Yes | `POST /space/{space_id}/folder` |
+| Spaces, Lists | Yes | `POST /team/{team_id}/space`, `POST /space/{space_id}/list` |
+| Tags (create, list, add to task) | Yes | `POST /space/{space_id}/tag`, `POST /task/{task_id}/tag/{tag_name}` |
+| Custom field values | Yes | `POST /task/{task_id}/field/{field_id}` (also via `customFields` on create/update) |
+| **Create a custom field definition** | **No** | No public endpoint — create it in the UI, then set values via this server |
+| **Create or edit statuses** | **No** | No endpoint at all — configure in the UI, or replicate a Folder/List template with `Create Folder/List from Template` |
+
+Tags are space-scoped: a tag created for one list becomes available across the whole space and cannot be deleted with this server.
 
 ### create_task Parameters
 
