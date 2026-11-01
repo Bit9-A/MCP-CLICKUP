@@ -9,8 +9,21 @@ import {
   ErrorCode,
 } from "@modelcontextprotocol/sdk/types.js";
 import { ClickUpClient } from "./clickup-client.js";
+import {
+  getProjectListId,
+  getSyncState,
+  normalizeTask,
+  openDatabase,
+  parseDateInput,
+  queryCompleted,
+  queryWorkload,
+  registerProject,
+  upsertTask,
+  type Db,
+} from "./db.js";
+import { syncTasks } from "./sync.js";
 import { existsSync, readFileSync } from "node:fs";
-import { join as joinPath, dirname } from "node:path";
+import { join as joinPath, dirname, basename } from "node:path";
 import { homedir } from "node:os";
 
 // ── API Key detection ──────────────────────────────────────────────
@@ -81,7 +94,7 @@ const PROJECT_CONFIG = findProjectConfig();
 const clickup = new ClickUpClient(API_KEY);
 
 const server = new Server(
-  { name: "mcp-clickup-server", version: "1.0.0" },
+  { name: "mcp-clickup-server", version: "1.6.0" },
   { capabilities: { tools: {} } },
 );
 
@@ -124,6 +137,64 @@ function formatList(items: { id: string; name: string }[], label: string) {
     (i) => `  • **${i.name}** — \`${i.id}\``,
   );
   return [`## ${label}`, ...lines, "", `Total: ${items.length}`].join("\n");
+}
+
+// ── Local cache ─────────────────────────────────────────────────────
+
+let cacheDb: Db | null = null;
+
+/**
+ * Opened lazily so a broken/unwritable cache path can only affect the cache
+ * tools, never server startup or the existing ClickUp tools.
+ */
+function getDb(): Db {
+  if (!cacheDb) cacheDb = openDatabase();
+  return cacheDb;
+}
+
+/** Best-effort projection write: a cache failure must never fail a tool call. */
+function cacheUpsertTask(raw: unknown): void {
+  try {
+    if (!raw || typeof raw !== "object") return;
+    upsertTask(getDb(), normalizeTask(raw as Record<string, unknown>));
+  } catch (error) {
+    console.error(`⚠️ No se pudo actualizar la caché local: ${extractError(error)}`);
+  }
+}
+
+function formatDate(ms: number | null | undefined): string {
+  if (ms == null) return "—";
+  return new Date(ms).toLocaleString();
+}
+
+function syncStateFor(listId?: string, teamId?: string) {
+  try {
+    if (listId) return getSyncState(getDb(), `list:${listId}`);
+    if (teamId) return getSyncState(getDb(), `team:${teamId}`);
+  } catch {
+    // Cache unreadable → report as never synced.
+  }
+  return null;
+}
+
+/** Resolves `project` from the local registry; throws a clear MCP error otherwise. */
+function resolveProjectListId(project: string): string {
+  let listId: string | null = null;
+  try {
+    listId = getProjectListId(getDb(), project);
+  } catch (error) {
+    throw new McpError(
+      ErrorCode.InternalError,
+      `No se pudo leer la caché local: ${extractError(error)}`,
+    );
+  }
+  if (!listId) {
+    throw new McpError(
+      ErrorCode.InvalidParams,
+      `No hay un proyecto registrado como "${project}". Ejecutá get_project_config en ese proyecto (o sync_tasks) para registrarlo, o pasá listId directamente.`,
+    );
+  }
+  return listId;
 }
 
 // ── Tool definitions ────────────────────────────────────────────────
@@ -580,6 +651,209 @@ IMPORTANTE: Si el usuario no especifica listId, el server intenta resolverlo des
     },
   },
   {
+    name: "create_folder",
+    description: `Crea una carpeta dentro de un espacio de ClickUp.
+
+ÚSALA cuando el usuario pida:
+- "Crear carpeta", "nueva carpeta", "agrupar en una carpeta"
+- Organizar listas dentro de una carpeta
+
+Nota: ClickUp no permite crear carpetas anidadas salvo que el workspace tenga subcarpetas habilitadas; en ese caso pasá parentFolderId.`,
+    inputSchema: {
+      type: "object",
+      properties: {
+        spaceId: {
+          type: "string",
+          description: "ID del espacio donde crear la carpeta",
+        },
+        name: {
+          type: "string",
+          description: "Nombre de la carpeta",
+        },
+        parentFolderId: {
+          type: "string",
+          description: "ID de una carpeta existente para crearla como subcarpeta (opcional)",
+        },
+      },
+      required: ["spaceId", "name"],
+    },
+  },
+  {
+    name: "get_space_tags",
+    description: `Lista los tags (etiquetas) existentes en un espacio de ClickUp.
+
+ÚSALA para:
+- Ver qué clasificaciones ya existen antes de crear una nueva
+- Evitar duplicar tags con nombres parecidos`,
+    inputSchema: {
+      type: "object",
+      properties: {
+        spaceId: {
+          type: "string",
+          description: "ID del espacio",
+        },
+      },
+      required: ["spaceId"],
+    },
+  },
+  {
+    name: "create_space_tag",
+    description: `Crea un tag (etiqueta) a nivel de espacio en ClickUp.
+
+ÚSALA cuando el usuario pida:
+- "Crear etiqueta", "crear tag", "clasificar por..."
+- Armar clasificaciones transversales (área, tipo, plataforma)
+
+Importante: el tag queda disponible en TODO el espacio, no solo en una lista.`,
+    inputSchema: {
+      type: "object",
+      properties: {
+        spaceId: {
+          type: "string",
+          description: "ID del espacio donde crear el tag",
+        },
+        name: {
+          type: "string",
+          description: "Nombre del tag (sin #)",
+        },
+        tagBg: {
+          type: "string",
+          description: "Color de fondo en hex, ej: #FF5733 (default: #595d66)",
+        },
+        tagFg: {
+          type: "string",
+          description: "Color del texto en hex, ej: #FFFFFF (default: #ffffff)",
+        },
+      },
+      required: ["spaceId", "name"],
+    },
+  },
+  {
+    name: "add_tag_to_task",
+    description: `Agrega un tag existente a una tarea de ClickUp.
+
+ÚSALA cuando el usuario pida:
+- "Etiquetar tarea como...", "agregar tag a la tarea"
+
+El tag debe existir en el espacio; si no existe, crealo antes con create_space_tag.`,
+    inputSchema: {
+      type: "object",
+      properties: {
+        taskId: {
+          type: "string",
+          description: "ID de la tarea",
+        },
+        tagName: {
+          type: "string",
+          description: "Nombre del tag a agregar",
+        },
+      },
+      required: ["taskId", "tagName"],
+    },
+  },
+  {
+    name: "sync_tasks",
+    description: `Sincroniza las tareas de ClickUp en la caché local SQLite del servidor.
+
+ÚSALA para:
+- "Sincronizar tareas", "actualizar la caché", "traer las tareas de ClickUp"
+- Preparar datos para get_completed_tasks o get_workload
+- Refrescar el estado del trabajo sin depender de la API en cada consulta
+
+ClickUp sigue siendo la fuente de verdad: la base local es una proyección reconstruible. Por defecto hace una sincronización incremental (solo tareas modificadas desde la última vez); con full=true recorre la lista completa y detecta tareas eliminadas (las marca como archivadas, nunca las borra).
+
+IMPORTANTE: Si no pasás listId ni teamId, el server usa la lista configurada del proyecto (.mcp-clickup.json).`,
+    inputSchema: {
+      type: "object",
+      properties: {
+        listId: {
+          type: "string",
+          description: "ID de la lista a sincronizar (si no se pasa, usa la del proyecto)",
+        },
+        teamId: {
+          type: "string",
+          description: "ID del workspace para sincronizar todas sus listas",
+        },
+        full: {
+          type: "boolean",
+          description: "true = recorrido completo con detección de eliminadas (default: false)",
+        },
+      },
+    },
+  },
+  {
+    name: "get_completed_tasks",
+    description: `Lista tareas completadas/cerradas desde la caché local (sin llamar a la API).
+
+ÚSALA para:
+- "Qué se completó esta semana", "tareas cerradas del mes"
+- Reportes de avance por rango de fechas
+- Ver el trabajo terminado de un proyecto o workspace
+
+Requiere haber corrido sync_tasks al menos una vez para ese alcance. Devuelve nombre, estado, fecha de cierre localizada, cantidad de asignados y link. Los datos pueden estar desactualizados respecto de ClickUp: revisá el último sync informado.`,
+    inputSchema: {
+      type: "object",
+      properties: {
+        project: {
+          type: "string",
+          description: "Nombre del proyecto registrado (resuelve a su lista de ClickUp)",
+        },
+        listId: {
+          type: "string",
+          description: "ID de la lista (alternativa a project)",
+        },
+        teamId: {
+          type: "string",
+          description: "ID del workspace para abarcar todas sus listas registradas",
+        },
+        since: {
+          type: "string",
+          description: "Desde cuándo: fecha ISO (2025-01-31) o timestamp en milisegundos",
+        },
+        until: {
+          type: "string",
+          description: "Hasta cuándo: fecha ISO o timestamp en milisegundos",
+        },
+        assignee: {
+          type: "number",
+          description: "ID de usuario para filtrar por asignado",
+        },
+        limit: {
+          type: "number",
+          description: "Máximo de tareas a devolver (default: 100, tope: 500)",
+        },
+      },
+    },
+  },
+  {
+    name: "get_workload",
+    description: `Resume la carga de trabajo desde la caché local: tareas abiertas por estado y por asignado.
+
+ÚSALA para:
+- "Cómo viene la carga del equipo", "quién tiene más pendientes"
+- Distribución de tareas por estado
+- Planificación rápida sin consultar ClickUp
+
+Requiere haber corrido sync_tasks para ese alcance. Excluye tareas archivadas.`,
+    inputSchema: {
+      type: "object",
+      properties: {
+        project: {
+          type: "string",
+          description: "Nombre del proyecto registrado (resuelve a su lista de ClickUp)",
+        },
+        listId: {
+          type: "string",
+          description: "ID de la lista (alternativa a project)",
+        },
+        teamId: {
+          type: "string",
+          description: "ID del workspace para abarcar todas sus listas registradas",
+        },
+      },
+    },
+  },
+  {
     name: "get_project_config",
     description: `Obtiene la configuración del proyecto actual asociada a una lista de ClickUp.
 
@@ -852,6 +1126,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           customFields: (customFields as Array<{ id: string; value: unknown }>) ?? undefined,
         });
 
+        cacheUpsertTask(task);
+
         return {
           content: [
             {
@@ -926,6 +1202,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           assignees: utAssignees as number[],
           customFields: utCustomFields as Array<{ id: string; value: unknown }>,
         });
+
+        cacheUpsertTask(updated);
 
         return {
           content: [{
@@ -1034,6 +1312,292 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         };
       }
 
+      case "create_folder": {
+        const { spaceId: cfSpaceId, name: cfName, parentFolderId } = args as Record<string, unknown>;
+        if (typeof cfSpaceId !== "string" || typeof cfName !== "string") {
+          throw new McpError(ErrorCode.InvalidParams, "spaceId y name son requeridos");
+        }
+        const folder = await clickup.createFolder(cfSpaceId, {
+          name: cfName,
+          parentFolderId: parentFolderId as string | undefined,
+        });
+        return {
+          content: [{
+            type: "text",
+            text: `✅ Carpeta creada: **${folder.name as string}** (\`${folder.id as string}\`)`,
+          }],
+        };
+      }
+
+      case "get_space_tags": {
+        const { spaceId: gstSpaceId } = args as Record<string, unknown>;
+        if (typeof gstSpaceId !== "string") {
+          throw new McpError(ErrorCode.InvalidParams, "spaceId es requerido");
+        }
+        const tags = await clickup.getSpaceTags(gstSpaceId);
+        if (tags.length === 0) {
+          return { content: [{ type: "text", text: "Este espacio no tiene tags." }] };
+        }
+        return {
+          content: [{
+            type: "text",
+            text: [
+              "## Tags",
+              ...tags.map((t) => `  • **${t.name}**${t.tag_bg ? ` — ${t.tag_bg}` : ""}`),
+              "",
+              `Total: ${tags.length}`,
+            ].join("\n"),
+          }],
+        };
+      }
+
+      case "create_space_tag": {
+        const { spaceId: cstSpaceId, name: cstName, tagBg, tagFg } = args as Record<string, unknown>;
+        if (typeof cstSpaceId !== "string" || typeof cstName !== "string") {
+          throw new McpError(ErrorCode.InvalidParams, "spaceId y name son requeridos");
+        }
+        const tagRes = await clickup.createSpaceTag(cstSpaceId, {
+          name: cstName,
+          tagBg: tagBg as string | undefined,
+          tagFg: tagFg as string | undefined,
+        });
+        const createdTag = (tagRes as Record<string, unknown>)?.tag as Record<string, unknown> | undefined;
+        return {
+          content: [{
+            type: "text",
+            text: `✅ Tag creado: **${(createdTag?.name as string) ?? cstName}** en espacio \`${cstSpaceId}\``,
+          }],
+        };
+      }
+
+      case "add_tag_to_task": {
+        const { taskId: attTaskId, tagName } = args as Record<string, unknown>;
+        if (typeof attTaskId !== "string" || typeof tagName !== "string") {
+          throw new McpError(ErrorCode.InvalidParams, "taskId y tagName son requeridos");
+        }
+        await clickup.addTagToTask(attTaskId, tagName);
+        // The tag endpoint returns no task body, so refresh it for the cache.
+        // Best-effort: a failure here must not change the tool result.
+        try {
+          cacheUpsertTask(await clickup.getTask(attTaskId));
+        } catch (error) {
+          console.error(`⚠️ No se pudo refrescar la caché local: ${extractError(error)}`);
+        }
+        return {
+          content: [{
+            type: "text",
+            text: `✅ Tag **${tagName}** agregado a tarea \`${attTaskId}\``,
+          }],
+        };
+      }
+
+      // ── Local cache ────────────────────────────────────────────
+      case "sync_tasks": {
+        const { listId: stListId, teamId: stTeamId, full: stFull } = args as Record<string, unknown>;
+
+        let targetListId = typeof stListId === "string" && stListId ? stListId : undefined;
+        const targetTeamId = typeof stTeamId === "string" && stTeamId ? stTeamId : undefined;
+        let configUsed: { config: ProjectConfig; path: string | null } | null = null;
+
+        if (!targetListId && !targetTeamId) {
+          const pc = findProjectConfig(process.cwd());
+          if (pc.config?.listId) {
+            targetListId = pc.config.listId;
+            configUsed = { config: pc.config, path: pc.path };
+          }
+        }
+
+        if (!targetListId && !targetTeamId) {
+          throw new McpError(
+            ErrorCode.InvalidParams,
+            "Pasá listId o teamId, o configurá el proyecto con .mcp-clickup.json (npm run setup).",
+          );
+        }
+
+        const result = await syncTasks(getDb(), {
+          client: clickup,
+          listId: targetListId,
+          teamId: targetTeamId,
+          full: stFull === true,
+        });
+
+        // Same registration the config tool does, so `project` works later.
+        if (configUsed && targetListId) {
+          try {
+            registerProject(getDb(), {
+              project: configUsed.config.project ?? basename(process.cwd()),
+              path: configUsed.path,
+              listId: targetListId,
+              teamId: configUsed.config.workspaceId ?? null,
+            });
+          } catch {
+            // Cache bookkeeping only — never fails the sync report.
+          }
+        }
+
+        const statusIcon = result.status === "ok" ? "✅" : result.status === "partial" ? "⚠️" : "❌";
+        const lines = [
+          `## Sync ${targetListId ? `lista \`${targetListId}\`` : `workspace \`${targetTeamId}\``}`,
+          `  Tareas sincronizadas: ${result.synced}`,
+          `  Páginas recorridas: ${result.pages}`,
+          `  Archivadas (ya no están en ClickUp): ${result.archived}`,
+          `  Estado: ${statusIcon} ${result.status}`,
+          `  Duración: ${(result.durationMs / 1000).toFixed(2)}s`,
+          `  Watermark: ${result.watermark}`,
+        ];
+
+        if (result.status === "partial") {
+          lines.push(
+            "",
+            "⚠️ Se alcanzó el tope de páginas y el recorrido quedó incompleto. No se archivó nada; volvé a ejecutar sync_tasks para continuar.",
+          );
+        } else if (result.status === "failed") {
+          lines.push(
+            "",
+            "❌ La sincronización falló (red o API de ClickUp). No se archivó ninguna tarea y el watermark no cambió; reintentá en unos minutos.",
+          );
+        }
+
+        return {
+          content: [{ type: "text", text: lines.join("\n") }],
+        };
+      }
+
+      case "get_completed_tasks": {
+        const {
+          project: gcProject,
+          listId: gcListId,
+          teamId: gcTeamId,
+          since: gcSince,
+          until: gcUntil,
+          assignee: gcAssignee,
+          limit: gcLimit,
+        } = args as Record<string, unknown>;
+
+        let scopeListId = typeof gcListId === "string" && gcListId ? gcListId : undefined;
+        const scopeTeamId = typeof gcTeamId === "string" && gcTeamId ? gcTeamId : undefined;
+        if (!scopeListId && typeof gcProject === "string" && gcProject) {
+          scopeListId = resolveProjectListId(gcProject);
+        }
+
+        const sinceMs = parseDateInput(gcSince);
+        const untilMs = parseDateInput(gcUntil);
+        const notes: string[] = [];
+        if (gcSince !== undefined && sinceMs === undefined) notes.push("⚠️ `since` inválido, se ignoró.");
+        if (gcUntil !== undefined && untilMs === undefined) notes.push("⚠️ `until` inválido, se ignoró.");
+
+        const rows = queryCompleted(getDb(), {
+          listId: scopeListId,
+          teamId: scopeListId ? undefined : scopeTeamId,
+          since: sinceMs,
+          until: untilMs,
+          assigneeId: typeof gcAssignee === "number" ? gcAssignee : undefined,
+          limit: typeof gcLimit === "number" ? gcLimit : undefined,
+        });
+
+        const state = syncStateFor(scopeListId, scopeTeamId);
+        const scopeLabel = scopeListId
+          ? `lista \`${scopeListId}\``
+          : scopeTeamId
+            ? `workspace \`${scopeTeamId}\``
+            : "todas las listas en caché";
+
+        const header = [
+          `## Tareas completadas (${scopeLabel})`,
+          state
+            ? `Último sync: ${formatDate(state.last_sync)} — estado: ${state.last_status ?? "—"}`
+            : "⚠️ Este alcance nunca se sincronizó. Ejecutá sync_tasks primero.",
+        ];
+
+        if (rows.length === 0) {
+          header.push(
+            "",
+            state
+              ? "No hay tareas completadas para los filtros indicados."
+              : "⚠️ La caché está vacía para este alcance.",
+          );
+        } else {
+          const lines = rows.map((row) => {
+            let assigneeCount = 0;
+            try {
+              const parsed = JSON.parse(row.assignees ?? "[]") as unknown;
+              assigneeCount = Array.isArray(parsed) ? parsed.length : 0;
+            } catch {
+              assigneeCount = 0;
+            }
+            const people = assigneeCount > 0 ? ` · 👤 ${assigneeCount}` : "";
+            const link = row.url ? ` · ${row.url}` : "";
+            return `  • **${row.name}** — ${row.status} · cerrada: ${formatDate(row.closed_at)}${people}${link}`;
+          });
+          header.push("", ...lines, "", `Total: ${rows.length}`);
+        }
+
+        if (notes.length > 0) header.push("", ...notes);
+
+        return {
+          content: [{ type: "text", text: header.join("\n") }],
+        };
+      }
+
+      case "get_workload": {
+        const { project: gwProject, listId: gwListId, teamId: gwTeamId } = args as Record<string, unknown>;
+
+        let scopeListId = typeof gwListId === "string" && gwListId ? gwListId : undefined;
+        const scopeTeamId = typeof gwTeamId === "string" && gwTeamId ? gwTeamId : undefined;
+        if (!scopeListId && typeof gwProject === "string" && gwProject) {
+          scopeListId = resolveProjectListId(gwProject);
+        }
+
+        const result = queryWorkload(getDb(), {
+          listId: scopeListId,
+          teamId: scopeListId ? undefined : scopeTeamId,
+        });
+
+        const state = syncStateFor(scopeListId, scopeTeamId);
+        const scopeLabel = scopeListId
+          ? `lista \`${scopeListId}\``
+          : scopeTeamId
+            ? `workspace \`${scopeTeamId}\``
+            : "todas las listas en caché";
+
+        const statusEntries = Object.entries(result.byStatus).sort(
+          (a, b) => b[1] - a[1] || a[0].localeCompare(b[0]),
+        );
+
+        const statusLines = statusEntries.length === 0
+          ? ["  Sin datos."]
+          : statusEntries.map(([status, count]) => `  • **${status}**: ${count}`);
+
+        const assigneeLines = result.byAssignee.length === 0
+          ? ["  Sin asignados registrados."]
+          : result.byAssignee.map(
+              (a) => `  • \`${a.id}\` — abiertas: ${a.open} · cerradas: ${a.closed}`,
+            );
+
+        const lines = [
+          `## Carga de trabajo (${scopeLabel})`,
+          state
+            ? `Último sync: ${formatDate(state.last_sync)} — estado: ${state.last_status ?? "—"}`
+            : "⚠️ Este alcance nunca se sincronizó. Ejecutá sync_tasks primero.",
+          "",
+          `Tareas en caché: ${result.total}`,
+          "",
+          "### Por estado",
+          ...statusLines,
+          "",
+          "### Por asignado",
+          ...assigneeLines,
+        ];
+
+        if (result.total === 0) {
+          lines.push("", "⚠️ La caché está vacía para este alcance: ejecutá sync_tasks para poblarla.");
+        }
+
+        return {
+          content: [{ type: "text", text: lines.join("\n") }],
+        };
+      }
+
       case "get_project_config": {
         const pc = findProjectConfig(process.cwd());
         if (!pc.config) {
@@ -1044,6 +1608,22 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             }],
           };
         }
+
+        // Registering the project makes `project` usable in cache queries.
+        // Best-effort: the config answer never depends on the cache.
+        if (pc.config.listId) {
+          try {
+            registerProject(getDb(), {
+              project: pc.config.project ?? (pc.path ? basename(dirname(pc.path)) : basename(process.cwd())),
+              path: pc.path,
+              listId: pc.config.listId,
+              teamId: pc.config.workspaceId ?? null,
+            });
+          } catch (error) {
+            console.error(`⚠️ No se pudo registrar el proyecto en la caché local: ${extractError(error)}`);
+          }
+        }
+
         const lines = [
           `Proyecto: ${pc.config.project ?? "—"}`,
           `Lista: ${pc.config.listName ?? "—"} (\`${pc.config.listId ?? "—"}\`)`,

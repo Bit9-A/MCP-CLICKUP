@@ -168,6 +168,34 @@ export class ClickUpClient {
     return res.data;
   }
 
+  async createFolder(spaceId: string, params: { name: string; parentFolderId?: string }) {
+    const body: Record<string, unknown> = { name: params.name };
+    if (params.parentFolderId) body.parent_folder_id = params.parentFolderId;
+    const res = await this.client.post(`/space/${spaceId}/folder`, body);
+    return res.data;
+  }
+
+  async getSpaceTags(spaceId: string): Promise<Array<{ name: string; tag_bg?: string; tag_fg?: string }>> {
+    const res = await this.client.get(`/space/${spaceId}/tag`);
+    return (res.data.tags as Array<{ name: string; tag_bg?: string; tag_fg?: string }>) ?? [];
+  }
+
+  async createSpaceTag(spaceId: string, params: { name: string; tagBg?: string; tagFg?: string }) {
+    const res = await this.client.post(`/space/${spaceId}/tag`, {
+      tag: {
+        name: params.name,
+        tag_bg: params.tagBg ?? "#595d66",
+        tag_fg: params.tagFg ?? "#ffffff",
+      },
+    });
+    return res.data;
+  }
+
+  async addTagToTask(taskId: string, tagName: string) {
+    const res = await this.client.post(`/task/${taskId}/tag/${encodeURIComponent(tagName)}`);
+    return res.data;
+  }
+
   async createList(
     spaceId: string,
     params: { name: string; content?: string; priority?: number; dueDate?: string; status?: string; assignee?: number },
@@ -297,6 +325,21 @@ export class ClickUpClient {
 
     const res = await this.client.get(`/list/${listId}/task`, { params });
     return res.data as { tasks: unknown[] };
+  }
+
+  /**
+   * Raw list-task page, used by the local cache sweep.
+   * Params are passed through untranslated (include_closed, subtasks, page, ...).
+   */
+  async getListTasksRaw(listId: string, params: Record<string, string | number | boolean> = {}) {
+    const res = await this.client.get(`/list/${listId}/task`, { params });
+    return res.data as { tasks: Array<Record<string, unknown>>; last_page?: boolean };
+  }
+
+  /** Raw team-wide task page, used by the local cache sweep. */
+  async getTeamTasksRaw(teamId: string, params: Record<string, string | number | boolean> = {}) {
+    const res = await this.client.get(`/team/${teamId}/task`, { params });
+    return res.data as { tasks: Array<Record<string, unknown>>; last_page?: boolean };
   }
 
   async getComments(taskId: string) {
