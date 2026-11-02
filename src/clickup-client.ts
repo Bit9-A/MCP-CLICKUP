@@ -9,6 +9,24 @@ export interface CustomFieldValue {
   value: unknown;
 }
 
+/**
+ * Pure diff used to reconcile task tags. ClickUp only exposes add/remove
+ * endpoints, so callers translate this into the minimum number of requests.
+ */
+export function diffTags(
+  current: string[],
+  desired: string[],
+): { add: string[]; remove: string[] } {
+  const clean = (list: string[]) =>
+    new Set(list.map((t) => t.trim()).filter((t) => t.length > 0));
+  const want = clean(desired);
+  const have = clean(current);
+  return {
+    add: [...want].filter((t) => !have.has(t)),
+    remove: [...have].filter((t) => !want.has(t)),
+  };
+}
+
 export interface CreateTaskParams {
   name: string;
   description?: string;
@@ -196,6 +214,32 @@ export class ClickUpClient {
     return res.data;
   }
 
+  async removeTagFromTask(taskId: string, tagName: string) {
+    const res = await this.client.delete(`/task/${taskId}/tag/${encodeURIComponent(tagName)}`);
+    return res.data;
+  }
+
+  /**
+   * Reconciles a task's tags to exactly `desired`.
+   *
+   * `PUT /task` accepts a `tags` field and silently ignores it (200 OK, tags
+   * unchanged), so tags must go through the dedicated add/remove endpoints.
+   * The diff keeps the call count proportional to the actual change.
+   */
+  async syncTaskTags(taskId: string, desired: string[]): Promise<string[]> {
+    const wanted = [...new Set(desired.map((t) => t.trim()).filter(Boolean))];
+    const task = await this.getTask(taskId);
+    const current = ((task.tags ?? []) as Array<{ name?: string }>)
+      .map((t) => t.name ?? "")
+      .filter(Boolean);
+
+    const { add, remove } = diffTags(current, wanted);
+    for (const name of add) await this.addTagToTask(taskId, name);
+    for (const name of remove) await this.removeTagFromTask(taskId, name);
+
+    return wanted;
+  }
+
   async createList(
     spaceId: string,
     params: { name: string; content?: string; priority?: number; dueDate?: string; status?: string; assignee?: number },
@@ -257,7 +301,16 @@ export class ClickUpClient {
     }
 
     const response = await this.client.post(`/list/${listId}/task`, body);
-    return response.data;
+    const created = response.data as Record<string, unknown> & { id: string };
+
+    // Create Task documents the `tags` field, but tags are reconciled
+    // explicitly so classification never silently fails.
+    if (params.tags && params.tags.length > 0) {
+      const tags = await this.syncTaskTags(created.id, params.tags);
+      return { ...created, tags: tags.map((name) => ({ name })) };
+    }
+
+    return created;
   }
 
   async getListFields(listId: string): Promise<{
@@ -295,8 +348,6 @@ export class ClickUpClient {
     const startTs = parseDate(params.startDate);
     if (startTs !== undefined) body.start_date = startTs;
 
-    if (params.tags) body.tags = params.tags;
-
     if (params.assignees && params.assignees.length > 0) {
       body.assignees = { add: params.assignees };
     }
@@ -306,6 +357,14 @@ export class ClickUpClient {
     }
 
     const res = await this.client.put(`/task/${taskId}`, body);
+
+    // `tags` is deliberately NOT sent in the body: PUT /task accepts it and
+    // ignores it. Reconcile through the tag endpoints instead.
+    if (params.tags) {
+      const tags = await this.syncTaskTags(taskId, params.tags);
+      return { ...res.data, tags: tags.map((name) => ({ name })) };
+    }
+
     return res.data;
   }
 

@@ -325,6 +325,7 @@ ClickUp's public API does not expose everything the UI does. Check this before p
 | Spaces, Lists | Yes | `POST /team/{team_id}/space`, `POST /space/{space_id}/list` |
 | Tags (create, list, add to task) | Yes | `POST /space/{space_id}/tag`, `POST /task/{task_id}/tag/{tag_name}` |
 | Custom field values | Yes | `POST /task/{task_id}/field/{field_id}` (also via `customFields` on create/update) |
+| `PUT /task` with `tags` | **Ignored silently** | ClickUp returns 200 and leaves tags unchanged — use `POST /task/{id}/tag/{name}` |
 | **Create a custom field definition** | **No** | No public endpoint — create it in the UI, then set values via this server |
 | **Create or edit statuses** | **No** | No endpoint at all — configure in the UI, or replicate a Folder/List template with `Create Folder/List from Template` |
 

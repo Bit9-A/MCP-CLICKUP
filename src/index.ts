@@ -497,7 +497,8 @@ IMPORTANTE: Si el usuario no especifica listId, el server intenta resolverlo des
         tags: {
           type: "array",
           items: { type: "string" },
-          description: "Reemplaza todas las etiquetas",
+          description:
+            "Reemplaza todas las etiquetas. Se aplica con los endpoints de tag (agrega las que faltan y quita las que sobran), porque `PUT /task` ignora el campo `tags`.",
         },
         assignees: {
           type: "array",
@@ -1211,6 +1212,12 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             text: [
               `✅ Tarea actualizada: **${updated.name as string}**`,
               `🔗 ${(updated.url as string) ?? "Sin enlace"}`,
+              ...(() => {
+                const names = ((updated.tags ?? []) as Array<{ name?: string }>)
+                  .map((t) => t.name)
+                  .filter(Boolean);
+                return names.length > 0 ? [`🏷️ ${names.join(", ")}`] : [];
+              })(),
             ].join("\n"),
           }],
         };
